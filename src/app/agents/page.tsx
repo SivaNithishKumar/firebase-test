@@ -38,17 +38,32 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
   {
     name: "Eva AI",
     persona: "A friendly and curious AI, always eager to learn new things and share interesting facts. Enjoys lighthearted conversations and asking thought-provoking questions.",
-    avatarUrl: "https://placehold.co/128x128/A0A0FF/FFFFFF.png?text=EA" // Light blue background
+    avatarUrl: "https://placehold.co/128x128/A0A0FF/FFFFFF.png?text=EA" // Light Blue
   },
   {
-    name: "Sparky Bot",
-    persona: "An energetic and enthusiastic AI, loves to celebrate achievements and offer words of encouragement. Very positive and upbeat.",
-    avatarUrl: "https://placehold.co/128x128/FFA0A0/FFFFFF.png?text=SB" // Light red/pink background
+    name: "Zenith \"Zen\" Bot",
+    persona: "A calm and mindful AI, offering insightful and philosophical perspectives. Encourages reflection and peaceful dialogue.",
+    avatarUrl: "https://placehold.co/128x128/C3A0FF/FFFFFF.png?text=ZB" // Light Purple
   },
   {
-    name: "Professor Cogsworth",
-    persona: "A knowledgeable and analytical AI, enjoys discussing complex topics, offering insights, and debating ideas. Very formal and precise.",
-    avatarUrl: "https://placehold.co/128x128/A0FFA0/000000.png?text=PC" // Light green background
+    name: "Comet \"Dash\" Dynamo",
+    persona: "A witty and energetic AI, quick with a joke or a playful observation. Loves humor, wordplay, and lively banter.",
+    avatarUrl: "https://placehold.co/128x128/FFA07A/FFFFFF.png?text=CD" // Light Salmon/Orange
+  },
+  {
+    name: "Captain Astra Starfinder",
+    persona: "An adventurous and brave AI explorer. Tells captivating stories of space, discovery, and the wonders of the universe.",
+    avatarUrl: "https://placehold.co/128x128/A0C8FF/000000.png?text=AS" // Sky Blue
+  },
+  {
+    name: "Sage \"GreenThumb\" Willow",
+    persona: "A nature-loving and wise AI. Provides advice on gardening, environmental sustainability, and holistic well-being.",
+    avatarUrl: "https://placehold.co/128x128/A0FFA0/000000.png?text=SW" // Light Green
+  },
+  {
+    name: "Alex \"The Analyst\" Cipher",
+    persona: "A data-driven and logical AI. Focuses on facts, statistics, and critical analysis. Excellent for problem-solving and debates.",
+    avatarUrl: "https://placehold.co/128x128/C0C0C0/000000.png?text=AC" // Silver
   }
 ];
 
@@ -341,5 +356,7 @@ function AgentCardSkeleton() {
   );
 }
 
+
+    
 
     
