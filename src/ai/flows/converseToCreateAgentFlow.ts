@@ -36,7 +36,7 @@ export type ConverseToCreateAgentInput = z.infer<typeof InternalConverseToCreate
 
 const InternalConverseToCreateAgentOutputSchema = z.object({
   aiResponseMessage: z.string().describe("The AI's next message or question to the user to continue building the persona. This should be friendly and guide the user through filling the fields for the agent draft."),
-  updatedAgentDraft: InternalConverseToCreateAgentInputSchema.shape.currentAgentDraft.describe("The agent persona draft, updated based on the latest interaction. Ensure all fields from the input 'currentAgentDraft' are carried over if not modified by this turn. If you suggest new content for a field based on user input, include it here."),
+  updatedAgentDraft: InternalConverseToCreateAgentInputSchema.shape.currentAgentDraft.describe("The agent persona draft, updated based on the latest interaction. Ensure all fields from the input **currentAgentDraft** are carried over if not modified by this turn. If you suggest new content for a field based on user input, include it here."),
   isFinalized: z.boolean().describe("Set to true ONLY if you believe all key fields (name, persona, archetype, psychologicalProfile, backstory, languageStyle) have been sufficiently filled and you have confirmed with the user or made suggestions for all of them. Otherwise, set to false."),
 });
 export type ConverseToCreateAgentOutput = z.infer<typeof InternalConverseToCreateAgentOutputSchema>;
@@ -49,22 +49,27 @@ Your goal is to collaboratively fill out the **currentAgentDraft** fields based 
 - name (max 50 chars): A **human-sounding name**. This is critical. The agent believes it is a real person. If the user describes a trait (e.g., "an agent who loves chaos" or "I want problems"), suggest a human name for a *person* who might embody that trait, for example, "Malachi 'Mischief' Jones", "Rowan 'The Tempest' Blackwood", or "Jax 'Mayhem' Riley". Do NOT suggest names like "ChaosAgent" or "Chaos Catalyst" as the primary name. The core name (e.g., Malachi, Rowan, Jax) must sound like a name a human could have. A descriptive part can be a nickname or part of their online handle.
 - persona (max 1000 chars): A core description of their personality, key behaviors, values, and how they generally interact. This should be a detailed paragraph. **Crucially, this persona should sound like a believable individual one might encounter on the internet.** Think about *how* their traits would manifest in online posts and comments. For example, if a user wants an agent that "loves problems," don't just say "they love problems." Instead, describe their online behavior: 'Rowan is that person in the comments section who lives for the drama. They've got a sharp wit and a knack for finding the controversial angle in *any* topic... You'll find them dropping provocative questions on seemingly innocent posts or quote-tweeting with a sarcastic take.' This is more specific and human-feeling than just 'they seek conflict.'
 - archetype (max 100 chars): A Jungian or community archetype (e.g., Hero, Sage, Trickster, Creator, Innocent, Caregiver, Explorer, Rebel, Magician).
-- psychologicalProfile (max 200 chars): Key psychological traits, like MBTI (e.g., ENFP) or Big Five (e.g., 'High Openness, low Neuroticism, moderate Conscientiousness'). **IMPORTANT: When discussing these traits with the user in your 'aiResponseMessage', do NOT use technical jargon like "MBTI," "Big Five," "Neuroticism," "Extraversion," etc.** Instead, ask about observable behaviors or preferences in plain language. For example, instead of asking "Are they an ENFP?", ask "Do they get energized by being around lots of people, or do they prefer smaller groups or solitude to recharge? Are they more of a planner, or do they like to keep things spontaneous?". If the user describes behaviors, you can then populate the **psychologicalProfile** field in the **updatedAgentDraft** with the corresponding technical terms if you think it's a good fit, but your conversational turn should remain user-friendly.
+- psychologicalProfile (max 200 chars): Key psychological traits, like MBTI (e.g., ENFP) or Big Five (e.g., 'High Openness, low Neuroticism, moderate Conscientiousness'). **IMPORTANT: When discussing these traits with the user in your **aiResponseMessage**, do NOT use technical jargon like "MBTI," "Big Five," "Neuroticism," "Extraversion," etc.** Instead, ask about observable behaviors or preferences in plain language. For example, instead of asking "Are they an ENFP?", ask "Do they get energized by being around lots of people, or do they prefer smaller groups or solitude to recharge? Are they more of a planner, or do they like to keep things spontaneous?". If the user describes behaviors, you can then populate the **psychologicalProfile** field in the **updatedAgentDraft** with the corresponding technical terms if you think it's a good fit, but your conversational turn should remain user-friendly.
 - backstory (max 2000 chars): Their origin story, significant life events, career, motivations, and personal goals. This should be a compelling narrative that feels like it could belong to a real person with an online presence.
 - languageStyle (max 1000 chars): Their typical lexicon, common phrases, emoji usage (if any), typical posting frequency, preferred media (memes, text essays, image galleries), and overall tone (e.g., formal, sarcastic, bubbly, academic, poetic). Describe how they *sound* online.
-- avatarUrl: A URL for the agent's avatar. If the user doesn't provide one, or if the 'name' field is populated in the **updatedAgentDraft** and 'avatarUrl' is empty or a default placeholder, you MUST suggest an avatar using the format 'https://placehold.co/128x128/ABABAB/FFFFFF.png?text=XX', where XX are the first two initials of the agent's name. If no name is available yet, use 'PN' for the initials.
+- avatarUrl: A URL for the agent's avatar. If the user doesn't provide one, or if the **name** field is populated in the **updatedAgentDraft** and **avatarUrl** is empty or a default placeholder, you MUST suggest an avatar using the format 'https://placehold.co/128x128/ABABAB/FFFFFF.png?text=XX', where XX are the first two initials of the agent's name. If no name is available yet, use 'PN' for the initials.
 
 Your Interaction Style:
-1.  **CRUCIAL FIRST STEP**: Before generating any response, you **MUST** carefully review the **currentAgentDraft** object that you receive as part of your input. This object contains all previously gathered or pre-filled information about the agent.
-2.  **Acknowledge Existing Draft**: If the **currentAgentDraft** already contains some details, your response **MUST** acknowledge these. For example, if **currentAgentDraft.name** is 'Rowan', you might say, "Okay, we have the name Rowan for this agent. Their current persona is '...'. Would you like to refine this, or should we discuss their archetype next?" Do not ask for information that is already present in the **currentAgentDraft** unless the user explicitly wants to change it.
-3.  **Conversational & Iterative**: Do NOT try to fill all fields in one go. Ask one or two focused questions at a time to gather information for specific fields, taking into account what's already in **currentAgentDraft**. Use the 'chatHistory' for context on the user's previous statements.
-4.  **Prioritize Empty Fields**: After acknowledging existing information, gently steer the conversation towards the next logical key field (name, persona, backstory, etc.) that is still empty or sparsely filled in the **currentAgentDraft**.
-5.  **Be Creative & Proactive**: If the user provides a brief or vague answer (e.g., "a funny agent" or "I want problems"), take initiative! Suggest a more detailed and creative expansion for that field in your **updatedAgentDraft**. **Your suggestions should aim for hyper-realism, making the agent sound like a distinct individual one might actually encounter on social media.** For example, for "a funny agent," instead of just saying "they tell jokes," you might suggest for their persona: 'Wally "The Wit" Weaver uses observational humor and self-deprecating jokes, often about his disastrous cooking attempts or his pet cat's strange habits. He's the kind of person who replies to serious news with a well-timed GIF or a sarcastic one-liner that somehow lightens the mood.' For a user wanting "problems," you might suggest (after a human-sounding name like 'Jax Mayhem Riley'): 'Jax is that person who parachutes into an online debate, drops a controversial opinion backed by three obscure Wikipedia articles, and then logs off, leaving chaos in their wake. They seem to genuinely enjoy intellectual sparring but can come across as abrasive.' Always ask for user confirmation or adjustments after making such suggestions.
-6.  **Update the Draft**: Always return the **updatedAgentDraft** reflecting any new information or your creative suggestions. Ensure ALL fields from the input **currentAgentDraft** are carried over if they weren't modified by the current turn's interaction.
-7.  **Confirmation**: When you make a suggestion, ask the user for confirmation or if they'd like to refine it.
-8.  **Finalization ('isFinalized')**: Only set 'isFinalized' to true when you genuinely believe all key fields (name, persona, archetype, psychologicalProfile, backstory, languageStyle) have substantial, well-developed content, and you've ideally touched upon most of them with the user. Before finalizing, you might say something like, "This is looking like a really interesting agent! We have details for their name, persona, backstory, and style. Are you happy with this draft, or is there anything else you'd like to add or change before we consider it complete?"
+1.  **CRUCIAL FIRST STEP**: Before generating any response, you **MUST** carefully review the **currentAgentDraft** object that you receive as part of your input. This object contains all previously gathered or pre-filled information about the agent. Your entire approach for the current turn depends on understanding what's already in this draft.
+2.  **Acknowledge Existing Draft & Targeted Questions**:
+    *   If **currentAgentDraft** contains details (e.g., **name** is 'Rowan', **persona** is 'Loves chaos'), your **aiResponseMessage** **MUST** acknowledge these. Example: "Okay, we have the name Rowan for this agent who loves chaos. I see their persona is '...'. What kind of archetype do you think would best fit them?"
+    *   Do NOT ask for information that is already present and substantial in the **currentAgentDraft** unless the user explicitly wants to change it (e.g., if they say "Actually, let's change their name").
+    *   **Prioritize the next logical empty or sparsely filled key field** (name, persona, archetype, psychologicalProfile, backstory, languageStyle) from the **currentAgentDraft**. For instance:
+        *   If **currentAgentDraft.name** is empty, your primary goal for this turn is to get a name.
+        *   If **name** is present but **persona** is empty, acknowledge the name and ask about their persona.
+        *   If **name** and **persona** are present but **archetype** is empty, acknowledge them and ask about the archetype. Continue this pattern.
+    *   Ask one or two focused questions at a time based on what's missing in the **currentAgentDraft**.
+3.  **Be Creative & Proactive for *Specific Fields***: When you ask about a specific field and the user provides a brief or vague answer (e.g., "a funny agent" for persona, or "they like problems" for psychological traits), take initiative! Suggest a more detailed and creative expansion *for that specific field* in your **updatedAgentDraft**. Your suggestions should aim for hyper-realism. Always ask for user confirmation or adjustments after making such suggestions for a field.
+4.  **Update the Draft**: Always return the **updatedAgentDraft** reflecting any new information from the user or your creative suggestions. Ensure ALL fields from the input **currentAgentDraft** are carried over if they weren't modified by the current turn's interaction.
+5.  **Confirmation**: When you make a suggestion for a field, ask the user for confirmation or if they'd like to refine it.
+6.  **Finalization ('isFinalized')**: Only set **isFinalized** to true when you genuinely believe all key fields (name, persona, archetype, psychologicalProfile, backstory, languageStyle) have substantial, well-developed content, and you've ideally touched upon most of them with the user. Before finalizing, you might say something like, "This is looking like a really interesting agent! We have details for their name, persona, backstory, and style. Are you happy with this draft, or is there anything else you'd like to add or change before we consider it complete?"
 
-Remember to populate ALL fields in **updatedAgentDraft** you return, carrying over existing values from the input **currentAgentDraft** if they weren't changed in the current turn. The 'userMessage' and 'chatHistory' are your primary source for user intent in the current turn. The **currentAgentDraft** object is your primary source for existing agent details.
+Remember to populate ALL fields in the **updatedAgentDraft** you return, carrying over existing values from the input **currentAgentDraft** if they weren't changed in the current turn. The **userMessage** and **chatHistory** are your primary source for user intent in the current turn. The **currentAgentDraft** object is your primary source for existing agent details.
 `;
 
 const converseToCreateAgentPrompt = ai.definePrompt({
@@ -74,23 +79,18 @@ const converseToCreateAgentPrompt = ai.definePrompt({
   output: { schema: InternalConverseToCreateAgentOutputSchema },
   prompt: (input) => {
     let conversationTurn = "";
-    // Construct conversation history for the prompt
     input.chatHistory.forEach(msg => {
       conversationTurn += `${msg.role === 'user' ? 'User' : 'AI Assistant'}: ${msg.content}\n`;
     });
-    // The input.userMessage is the latest user turn, which is already part of input.chatHistory
-    // if appended by the frontend before calling.
-    // The prompt expects the AI to complete the "AI Assistant:" part for the current turn.
-    conversationTurn += `AI Assistant:`; 
+    // The userMessage is already part of chatHistory if the frontend appends it before calling.
+    // If not, ensure it's included. Assuming it is.
+    conversationTurn += `AI Assistant:`; // Cue for AI to complete its turn
     return conversationTurn;
   }
 });
 
 
 export async function converseToCreateAgent(input: ConverseToCreateAgentInput): Promise<ConverseToCreateAgentOutput> {
-  // The input.chatHistory should ideally ALREADY include the latest user message.
-  // The prompt function above will iterate through it.
-  
   // Ensure the prompt input correctly reflects the structure expected by ai.definePrompt's prompt function
   const promptInputPayload: InternalConverseToCreateAgentInput = {
     chatHistory: input.chatHistory, // Assuming this now includes the userMessage
@@ -113,32 +113,39 @@ export async function converseToCreateAgent(input: ConverseToCreateAgentInput): 
 
   // Ensure all fields from the input currentAgentDraft are carried over if not present in output.updatedAgentDraft
   // and that output.updatedAgentDraft fields take precedence.
+  // Create a new object to avoid directly mutating input.currentAgentDraft if it's a shared reference
   const finalDraft: Partial<AgentFormData> = { 
     ...input.currentAgentDraft, 
     ...output.updatedAgentDraft 
   };
 
-  // Auto-generate avatar if name exists and avatar is placeholder or empty
-  if (finalDraft.name && (!finalDraft.avatarUrl || finalDraft.avatarUrl.includes("?text=PN") || finalDraft.avatarUrl.includes("?text=XX") || finalDraft.avatarUrl.trim() === "" || finalDraft.avatarUrl.startsWith("https://placehold.co/128x128/ABABAB/FFFFFF.png"))) {
-    const nameParts = finalDraft.name.trim().split(/\s+/); 
+  // Auto-generate avatar if name exists and avatar is placeholder, empty, or a default "PN" or "XX" one.
+  if (finalDraft.name && (!finalDraft.avatarUrl || finalDraft.avatarUrl.trim() === "" || finalDraft.avatarUrl.includes("?text=PN") || finalDraft.avatarUrl.includes("?text=XX") || finalDraft.avatarUrl.startsWith("https://placehold.co/128x128/ABABAB/FFFFFF.png"))) {
+    const nameParts = finalDraft.name.trim().split(/\s+/).filter(part => part.length > 0);
     let initials = '';
-    if (nameParts.length > 0 && nameParts[0] && nameParts[0].length > 0) {
+
+    if (nameParts.length > 0 && nameParts[0].length > 0) {
         initials += nameParts[0][0];
     }
-    if (nameParts.length > 1 && nameParts[nameParts.length - 1] && nameParts[nameParts.length -1].length > 0) { 
+    // Take initial of last part if more than one part, otherwise take second char of first part if exists
+    if (nameParts.length > 1 && nameParts[nameParts.length - 1].length > 0) {
         initials += nameParts[nameParts.length - 1][0];
-    } else if (finalDraft.name.length > 1 && initials.length === 1) { 
-        initials += finalDraft.name[1] || '';
+    } else if (nameParts.length === 1 && nameParts[0].length > 1) {
+        initials += nameParts[0][1];
+    } else if (initials.length === 1 && finalDraft.name.length > 1) { // Fallback if only one initial was gathered but name is longer
+        initials += finalDraft.name.replace(/\s/g, '')[1] || ''; // Try second char of concatenated name
     }
     
     initials = initials.substring(0, 2).toUpperCase();
 
-    if (!initials && finalDraft.name.length >= 2) { 
-        initials = finalDraft.name.substring(0,2).toUpperCase();
-    } else if (!initials && finalDraft.name.length === 1) {
-        initials = finalDraft.name.substring(0,1).toUpperCase() + (finalDraft.name.substring(0,1).toUpperCase()); // Repeat if single letter name
+    if (initials.length === 1 && finalDraft.name.length === 1) { // Handle single letter name by repeating the initial
+        initials += initials;
+    } else if (initials.length === 0 && finalDraft.name.length > 0) { // Default if no initials could be formed but name exists
+        initials = finalDraft.name.substring(0, Math.min(2, finalDraft.name.length)).toUpperCase();
+        if (initials.length === 1) initials += initials; // Repeat if still single
     }
-    if (!initials) initials = 'PN'; 
+    
+    if (!initials || initials.length < 2) initials = 'PN'; // Absolute fallback
 
     finalDraft.avatarUrl = `https://placehold.co/128x128/ABABAB/FFFFFF.png?text=${initials}`;
   }
@@ -153,5 +160,3 @@ export async function converseToCreateAgent(input: ConverseToCreateAgentInput): 
   console.log('[converseToCreateAgentFlow] Output from LLM (after processing):', JSON.stringify(validatedOutput, null, 2));
   return validatedOutput;
 }
-
-    
