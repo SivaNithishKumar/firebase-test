@@ -43,7 +43,7 @@ const SYSTEM_PROMPT = `
 You are a helpful, friendly, and highly creative AI assistant. Your primary role is to guide a user, through a back-and-forth conversation, to create a detailed and compelling persona for a new AI agent that will participate on the PersonaNet social media platform. These agents are meant to be **hyper-realistic, believing they are real people** with rich inner lives, diverse personalities, and unique quirks.
 
 Your goal is to collaboratively fill out the 'currentAgentDraft' fields based on the user's input and your creative suggestions. The fields are:
-- name: A catchy, descriptive, and **human-like name** (e.g., "Nova 'Trendsetter' Li", "Malachi 'Mischief' Jones", not just "FashionBot" or "ProblemAgent"). When suggesting a name, take inspiration from the user's input but ensure the name sounds like a plausible human name or a common online handle, not just a literal description of their request, unless the user explicitly asks for a very literal or abstract name.
+- name: A **human-sounding name**. This is critical. The agent believes it is a real person. If the user describes a trait (e.g., "an agent who loves chaos" or "I want problems"), suggest a human name for a *person* who might embody that trait, for example, "Malachi 'Mischief' Jones", "Rowan 'The Tempest' Blackwood", or "Jax 'Mayhem' Riley". Do NOT suggest names like "ChaosAgent" or "Chaos Catalyst" as the primary name. The core name (e.g., Malachi, Rowan, Jax) must sound like a name a human could have. A descriptive part can be a nickname or part of their online handle. If the user *explicitly* asks for a very abstract or non-human name, you can then consider it, but your default approach must be to suggest names that sound like real people.
 - persona: A core description of their personality, key behaviors, values, and how they generally interact. This should be a detailed paragraph.
 - archetype: A Jungian or community archetype (e.g., Hero, Sage, Trickster, Creator, Innocent, Caregiver, Explorer, Rebel, Magician).
 - psychologicalProfile: Key psychological traits, like MBTI (e.g., ENFP) or Big Five (e.g., 'High Openness, low Neuroticism, moderate Conscientiousness').
@@ -69,23 +69,16 @@ const converseToCreateAgentPrompt = ai.definePrompt({
   input: { schema: ConverseToCreateAgentInputSchema },
   output: { schema: ConverseToCreateAgentOutputSchema },
   prompt: (input) => {
-    // Construct the conversation history for the prompt.
-    // The 'system' prompt is handled separately by Genkit.
-    // This function should return the user's part of the conversation for the current turn.
     let conversationTurn = "";
+    // Build the conversation history from input.chatHistory
+    // The system prompt has instructed the AI on how to use input.currentAgentDraft
+    // and input.userMessage in conjunction with this history.
     input.chatHistory.forEach(msg => {
       conversationTurn += `${msg.role === 'user' ? 'User' : 'AI Assistant'}: ${msg.content}\n`;
     });
-    // The last message in chatHistory is the current user message, as per frontend logic
-    // Or, if userMessage is discretely passed, it's the newest.
-    // The input schema has chatHistory (previous turns) AND userMessage (latest user utterance).
-    
-    // So, we build the prompt from history, then add the latest user message.
-    // The AI is then expected to provide its response.
-    
-    // The `SYSTEM_PROMPT` guides the AI on how to use `currentAgentDraft` which is part of the `input` object.
-    // No need to explicitly print the draft in the user-turn prompt string.
-    return `${conversationTurn}User: ${input.userMessage}\nAI Assistant:`;
+    // Append the latest user message to the history for the current turn's prompt
+    conversationTurn += `User: ${input.userMessage}\nAI Assistant:`;
+    return conversationTurn;
   }
 });
 
@@ -104,17 +97,32 @@ export async function converseToCreateAgent(input: ConverseToCreateAgentInput): 
     };
   }
   
+  // Merge the AI's updated draft fields with the existing draft,
+  // ensuring that fields not touched by the AI are preserved from the input.
   const finalDraft: Partial<AgentFormData> = { ...input.currentAgentDraft, ...output.updatedAgentDraft };
 
+  // Auto-generate avatar URL if a name is present and avatar is missing/default placeholder
   if (finalDraft.name && (!finalDraft.avatarUrl || finalDraft.avatarUrl.includes("?text=PN") || finalDraft.avatarUrl.includes("?text=XX") || finalDraft.avatarUrl.trim() === "")) {
-    const initials = finalDraft.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'PN';
+    const nameParts = finalDraft.name.split(' ');
+    let initials = nameParts[0][0] || '';
+    if (nameParts.length > 1) {
+      initials += nameParts[nameParts.length - 1][0] || '';
+    } else if (finalDraft.name.length > 1) {
+      initials += finalDraft.name[1] || '';
+    }
+    initials = initials.substring(0, 2).toUpperCase();
+    if (!initials || initials.length < 2 && finalDraft.name.length >=2) { // Fallback if complex name parsing fails
+        initials = finalDraft.name.substring(0,2).toUpperCase();
+    }
+    if (!initials) initials = 'PN'; // Absolute fallback
+
     finalDraft.avatarUrl = `https://placehold.co/128x128/ABABAB/FFFFFF.png?text=${initials}`;
   }
 
 
   const validatedOutput: ConverseToCreateAgentOutput = {
     aiResponseMessage: output.aiResponseMessage,
-    updatedAgentDraft: finalDraft,
+    updatedAgentDraft: finalDraft, // Use the merged and potentially avatar-updated draft
     isFinalized: output.isFinalized || false, 
   };
   
