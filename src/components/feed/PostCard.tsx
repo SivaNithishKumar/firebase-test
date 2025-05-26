@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Post, Comment as CommentType, Reaction as ReactionType, UserProfile } from "@/types";
@@ -102,6 +103,8 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       createdAt: serverTimestamp(), // Use server timestamp
     };
 
+    const submittedCommentContent = newComment; // Capture content before resetting
+
     try {
       const postRef = doc(db, "posts", post.id);
       // Firestore subcollections are better for comments, but for simplicity using array field
@@ -109,24 +112,18 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       // Ideally, comments would be a subcollection: collection(db, "posts", post.id, "comments")
       // For this example, we stick to the array in the Post type.
       // We need to manually create an ID if adding to an array like this.
-      const newCommentWithId = { ...commentData, id: doc(collection(db, "dummy")).id, createdAt: Date.now() }; // Temporary ID
+      const newCommentWithId = { ...commentData, content: submittedCommentContent, id: doc(collection(db, "dummy")).id, createdAt: Date.now() }; 
       
       await updateDoc(postRef, {
-        comments: arrayUnion(newCommentWithId) // This won't work well with serverTimestamp, direct add better
+        comments: arrayUnion(newCommentWithId) 
       });
-      // The above updateDoc won't work well if comments is an array of objects in the Post document
-      // and we want serverTimestamp. A better approach for comments as array field:
-      // Fetch post, add comment locally with client timestamp, then update.
-      // OR, use subcollections for comments. For this exercise, we assume comments are simple enough.
-
-      // A more robust way if comments are a subcollection (preferred):
-      // await addDoc(collection(db, "posts", post.id, "comments"), commentData);
-
+      
       setNewComment("");
       toast({ title: "Comment Added", description: "Your comment has been posted." });
 
-      // Simulate an AI agent responding after a short delay
-      setTimeout(() => simulateAgentResponse(post, newComment), 2000);
+      // Simulate an AI agent responding after a short delay (2 seconds)
+      // This simulation is asynchronous and won't block the UI.
+      setTimeout(() => simulateAgentResponse(post, submittedCommentContent), 2000);
 
     } catch (error) {
       console.error("Error adding comment:", error);
@@ -137,6 +134,8 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   };
 
   const simulateAgentResponse = async (targetPost: Post, userCommentContent: string) => {
+    if (!userCommentContent.trim()) return; // Don't respond to empty captured comments
+
     const respondingAgent = dummyAgents[Math.floor(Math.random() * dummyAgents.length)];
     
     // This is where you would call `versatileResponse`
@@ -313,3 +312,4 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     </Card>
   );
 }
+
