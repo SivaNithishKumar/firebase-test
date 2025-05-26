@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore, Timestamp } from "firebase/firestore"; // Added Timestamp import
-import { getFunctions, type Functions } from "firebase/functions"; // Added Functions import
+import { getFirestore, type Firestore, Timestamp } from "firebase/firestore";
+// Removed Functions import
 
 // Define placeholder values to check against
 const PLACEHOLDER_API_KEY = "YOUR_API_KEY";
@@ -10,9 +10,7 @@ const PLACEHOLDER_PROJECT_ID = "YOUR_PROJECT_ID";
 const PLACEHOLDER_STORAGE_BUCKET = "YOUR_STORAGE_BUCKET";
 const PLACEHOLDER_MESSAGING_SENDER_ID = "YOUR_MESSAGING_SENDER_ID";
 const PLACEHOLDER_APP_ID = "YOUR_APP_ID";
-// measurementId is optional, so no placeholder constant for throwing error, but can be read from env.
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || PLACEHOLDER_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || PLACEHOLDER_AUTH_DOMAIN,
@@ -23,16 +21,14 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || undefined,
 };
 
-// Check if critical Firebase config values are still placeholders
 if (
   firebaseConfig.apiKey === PLACEHOLDER_API_KEY ||
   firebaseConfig.authDomain === PLACEHOLDER_AUTH_DOMAIN ||
   firebaseConfig.projectId === PLACEHOLDER_PROJECT_ID ||
-  !firebaseConfig.apiKey || // Also check if they are empty/undefined
+  !firebaseConfig.apiKey ||
   !firebaseConfig.authDomain ||
   !firebaseConfig.projectId
 ) {
-  // Constructing the error message directly in the throw statement
   const exampleEnvContent = 
     "NEXT_PUBLIC_FIREBASE_API_KEY=your_actual_api_key\\n" +
     "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_actual_auth_domain\\n" +
@@ -54,7 +50,7 @@ if (
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
-let functions: Functions; // Added Functions instance
+// Removed functions instance
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
@@ -64,6 +60,6 @@ if (!getApps().length) {
 
 auth = getAuth(app);
 db = getFirestore(app);
-functions = getFunctions(app); // Initialize Functions
+// functions = getFunctions(app); // Removed Functions initialization
 
-export { app, auth, db, functions, Timestamp }; // Export functions and Timestamp
+export { app, auth, db, Timestamp }; // Removed functions from export

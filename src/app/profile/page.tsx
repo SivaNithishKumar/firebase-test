@@ -11,16 +11,30 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserCircle, Mail, CalendarDays, Users, UserPlus, UserCheck, UserX, Loader2, Network, UserMinus, UsersRound } from "lucide-react";
 import { format } from 'date-fns';
-import { db, functions, Timestamp } from "@/lib/firebase"; // Import functions from firebase
-import { getFunctions, httpsCallable, type HttpsCallableResult } from "firebase/functions"; // For calling functions
-import { doc, getDoc, onSnapshot, collection, query, where } from "firebase/firestore"; // Removed updateDoc, deleteDoc, writeBatch, arrayUnion, arrayRemove, serverTimestamp, runTransaction
+import { db, Timestamp } from "@/lib/firebase";
+import { 
+  doc, 
+  getDoc, 
+  onSnapshot, 
+  collection, 
+  query, 
+  where, 
+  writeBatch, 
+  arrayUnion, 
+  arrayRemove, 
+  serverTimestamp,
+  updateDoc,
+  deleteDoc,
+  getDocs
+} from "firebase/firestore";
 import type { AppUserProfile, FriendRequest, NetworkJoinRequest } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
 const convertAppUserProfileTimestamp = (profile: any): AppUserProfile => {
+    if (!profile) return {} as AppUserProfile; // Handle case where profile might be undefined
     return {
         ...profile,
-        createdAt: profile.createdAt instanceof Timestamp ? profile.createdAt.toMillis() : profile.createdAt,
+        createdAt: profile.createdAt instanceof Timestamp ? profile.createdAt.toMillis() : (typeof profile.createdAt === 'number' ? profile.createdAt : Date.now()),
         friends: profile.friends || [],
         memberOfNetworks: profile.memberOfNetworks || [],
         myNetworkMembers: profile.myNetworkMembers || [],
@@ -64,7 +78,6 @@ export default function ProfilePage() {
     if (user) {
       setLoadingProfile(true);
       
-      // Snapshot listener for the user's own profile for real-time updates to friends/members
       const profileRef = doc(db, "userProfiles", user.uid);
       const unsubscribeProfile = onSnapshot(profileRef, async (profileSnap) => {
         if (profileSnap.exists()) {
@@ -72,6 +85,8 @@ export default function ProfilePage() {
           setProfile(userProfileData);
 
           if (userProfileData.friends && userProfileData.friends.length > 0) {
+            // To avoid too many reads, fetch friend details only if list changes or initial load
+            // For simplicity here, re-fetching. Production might optimize this.
             const friendPromises = userProfileData.friends.map(friendId => getDoc(doc(db, "userProfiles", friendId)));
             const friendDocs = await Promise.all(friendPromises);
             setFriends(friendDocs.filter(docSnap => docSnap.exists()).map(docSnap => convertAppUserProfileTimestamp(docSnap.data() as AppUserProfile)));
@@ -88,16 +103,15 @@ export default function ProfilePage() {
           }
         } else {
           console.warn("User profile not found for UID:", user.uid);
-          setProfile(null); // Explicitly set to null if not found
+          setProfile(null);
         }
-        setLoadingProfile(false); // Set loading to false after initial load or profile not found
+        setLoadingProfile(false);
       }, (error) => {
         console.error("Error fetching profile data with onSnapshot:", error);
         toast({ title: "Error", description: `Could not load profile: ${error.message}`, variant: "destructive" });
         setLoadingProfile(false);
       });
 
-      // Snapshot listener for incoming friend requests
       const frQuery = query(collection(db, "friendRequests"), where("receiverId", "==", user.uid), where("status", "==", "pending"));
       const unsubscribeFriendRequests = onSnapshot(frQuery, (frSnapshot) => {
         setFriendRequests(frSnapshot.docs.map(docSnap => convertFriendRequestTimestamp({ id: docSnap.id, ...docSnap.data() } as FriendRequest)));
@@ -106,7 +120,6 @@ export default function ProfilePage() {
         toast({ title: "Error", description: `Could not load friend requests: ${error.message}`, variant: "destructive" });
       });
 
-      // Snapshot listener for incoming network join requests
       const njrQuery = query(collection(db, "networkJoinRequests"), where("networkOwnerId", "==", user.uid), where("status", "==", "pending"));
       const unsubscribeNetworkRequests = onSnapshot(njrQuery, (njrSnapshot) => {
         setNetworkJoinRequests(njrSnapshot.docs.map(docSnap => convertNetworkJoinRequestTimestamp({ id: docSnap.id, ...docSnap.data() } as NetworkJoinRequest)));
@@ -115,14 +128,12 @@ export default function ProfilePage() {
          toast({ title: "Error", description: `Could not load network join requests: ${error.message}`, variant: "destructive" });
       });
       
-      // Cleanup snapshot listeners on unmount
       return () => {
         unsubscribeProfile();
         unsubscribeFriendRequests();
         unsubscribeNetworkRequests();
       };
     } else {
-      // Clear data if user logs out
       setProfile(null);
       setFriends([]);
       setFriendRequests([]);
@@ -137,13 +148,21 @@ export default function ProfilePage() {
     if (!user || !profile) return;
     setProcessingRequestId(request.id);
     try {
-      const acceptFriendRequestFn = httpsCallable(functions, 'acceptFriendRequest');
-      await acceptFriendRequestFn({ requestId: request.id });
+      const batch = writeBatch(db);
+      const requestRef = doc(db, "friendRequests", request.id);
+      batch.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
+
+      const currentUserProfileRef = doc(db, "userProfiles", user.uid);
+      batch.update(currentUserProfileRef, { friends: arrayUnion(request.senderId) });
+
+      const senderProfileRef = doc(db, "userProfiles", request.senderId);
+      batch.update(senderProfileRef, { friends: arrayUnion(user.uid) });
+      
+      await batch.commit();
       toast({ title: "Friend Request Accepted", description: `You are now friends with ${request.senderDisplayName}.` });
-      // Local state will update via snapshot listener
     } catch (error: any) {
-      console.error("Error accepting friend request via function:", error);
-      toast({ title: "Error", description: `Could not accept request: ${error.message || 'Cloud function error'}`, variant: "destructive" });
+      console.error("Error accepting friend request:", error);
+      toast({ title: "Error", description: `Could not accept request: ${error.message}`, variant: "destructive" });
     } finally {
       setProcessingRequestId(null);
     }
@@ -153,13 +172,12 @@ export default function ProfilePage() {
     if (!user) return;
     setProcessingRequestId(request.id);
     try {
-      const declineFriendRequestFn = httpsCallable(functions, 'declineFriendRequest'); // Assuming you'll create this
-      await declineFriendRequestFn({ requestId: request.id });
+      const requestRef = doc(db, "friendRequests", request.id);
+      await updateDoc(requestRef, { status: "declined", updatedAt: serverTimestamp() });
       toast({ title: "Friend Request Declined", description: `Request from ${request.senderDisplayName} declined.` });
-      // Local state will update via snapshot listener
     } catch (error: any) {
-      console.error("Error declining friend request via function:", error);
-      toast({ title: "Error", description: `Could not decline request: ${error.message || 'Cloud function error'}`, variant: "destructive" });
+      console.error("Error declining friend request:", error);
+      toast({ title: "Error", description: `Could not decline request: ${error.message}`, variant: "destructive" });
     } finally {
       setProcessingRequestId(null);
     }
@@ -169,14 +187,19 @@ export default function ProfilePage() {
     if (!user || !profile) return;
     setProcessingRequestId(friendId);
     try {
-        const unfriendUserFn = httpsCallable(functions, 'unfriendUser');
-        await unfriendUserFn({ friendId: friendId });
-        const unfriendedUser = friends.find(f => f.uid === friendId);
-        toast({ title: "Unfriended", description: `You are no longer friends with ${unfriendedUser?.displayName || 'this user'}.` });
-        // Local state updates via snapshot
+      const batch = writeBatch(db);
+      const currentUserProfileRef = doc(db, "userProfiles", user.uid);
+      batch.update(currentUserProfileRef, { friends: arrayRemove(friendId) });
+
+      const friendProfileRef = doc(db, "userProfiles", friendId);
+      batch.update(friendProfileRef, { friends: arrayRemove(user.uid) });
+
+      await batch.commit();
+      const unfriendedUser = friends.find(f => f.uid === friendId);
+      toast({ title: "Unfriended", description: `You are no longer friends with ${unfriendedUser?.displayName || 'this user'}.` });
     } catch (error: any) {
-        console.error("Error unfriending user via function:", error);
-        toast({ title: "Error", description: `Could not unfriend user: ${error.message || 'Cloud function error'}`, variant: "destructive" });
+        console.error("Error unfriending user:", error);
+        toast({ title: "Error", description: `Could not unfriend user: ${error.message}`, variant: "destructive" });
     } finally {
         setProcessingRequestId(null);
     }
@@ -186,13 +209,23 @@ export default function ProfilePage() {
     if (!user || !profile) return;
     setProcessingRequestId(request.id);
     try {
-        const acceptNetworkJoinRequestFn = httpsCallable(functions, 'acceptNetworkJoinRequest');
-        await acceptNetworkJoinRequestFn({ requestId: request.id });
-        toast({ title: "Network Join Request Accepted", description: `${request.senderDisplayName} has joined your network.` });
-        // Local state updates via snapshot
+      const batch = writeBatch(db);
+      const requestRef = doc(db, "networkJoinRequests", request.id);
+      batch.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
+
+      // Add sender to network owner's myNetworkMembers list
+      const networkOwnerProfileRef = doc(db, "userProfiles", user.uid); // Current user is the network owner
+      batch.update(networkOwnerProfileRef, { myNetworkMembers: arrayUnion(request.senderId) });
+
+      // Add network owner to sender's memberOfNetworks list
+      const senderProfileRef = doc(db, "userProfiles", request.senderId);
+      batch.update(senderProfileRef, { memberOfNetworks: arrayUnion(user.uid) }); // user.uid is networkOwnerId
+
+      await batch.commit();
+      toast({ title: "Network Join Request Accepted", description: `${request.senderDisplayName} has joined your network.` });
     } catch (error: any) {
-        console.error("Error accepting network join request via function:", error);
-        toast({ title: "Error", description: `Could not accept join request: ${error.message || 'Cloud function error'}`, variant: "destructive" });
+        console.error("Error accepting network join request:", error);
+        toast({ title: "Error", description: `Could not accept join request: ${error.message}`, variant: "destructive" });
     } finally {
         setProcessingRequestId(null);
     }
@@ -202,14 +235,12 @@ export default function ProfilePage() {
     if (!user) return;
     setProcessingRequestId(request.id);
     try {
-        const declineNetworkJoinRequestFn = httpsCallable(functions, 'declineNetworkJoinRequest'); // Assuming you'll create this
-        await declineNetworkJoinRequestFn({ requestId: request.id });
-        toast({ title: "Network Join Request Declined", description: `Request from ${request.senderDisplayName} to join your network declined.` });
-        // Local state updates via snapshot
-    } catch (error: any)
-{
-        console.error("Error declining network join request via function:", error);
-        toast({ title: "Error", description: `Could not decline join request: ${error.message || 'Cloud function error'}`, variant: "destructive" });
+      const requestRef = doc(db, "networkJoinRequests", request.id);
+      await updateDoc(requestRef, { status: "declined", updatedAt: serverTimestamp() });
+      toast({ title: "Network Join Request Declined", description: `Request from ${request.senderDisplayName} to join your network declined.` });
+    } catch (error: any) {
+        console.error("Error declining network join request:", error);
+        toast({ title: "Error", description: `Could not decline join request: ${error.message}`, variant: "destructive" });
     } finally {
         setProcessingRequestId(null);
     }
@@ -219,19 +250,23 @@ export default function ProfilePage() {
     if (!user || !profile) return;
     setProcessingRequestId(memberId); 
     try {
-        const removeNetworkMemberFn = httpsCallable(functions, 'removeNetworkMember');
-        await removeNetworkMemberFn({ memberId: memberId });
-        const removedMember = myNetworkMembersList.find(m => m.uid === memberId);
-        toast({ title: "Member Removed", description: `${removedMember?.displayName || 'User'} has been removed from your network.` });
-        // Local state updates via snapshot
+      const batch = writeBatch(db);
+      const networkOwnerProfileRef = doc(db, "userProfiles", user.uid);
+      batch.update(networkOwnerProfileRef, { myNetworkMembers: arrayRemove(memberId) });
+
+      const memberProfileRef = doc(db, "userProfiles", memberId);
+      batch.update(memberProfileRef, { memberOfNetworks: arrayRemove(user.uid) });
+      
+      await batch.commit();
+      const removedMember = myNetworkMembersList.find(m => m.uid === memberId);
+      toast({ title: "Member Removed", description: `${removedMember?.displayName || 'User'} has been removed from your network.` });
     } catch (error: any) {
-        console.error("Error removing network member via function:", error);
-        toast({ title: "Error", description: `Could not remove member: ${error.message || 'Cloud function error'}`, variant: "destructive" });
+        console.error("Error removing network member:", error);
+        toast({ title: "Error", description: `Could not remove member: ${error.message}`, variant: "destructive" });
     } finally {
         setProcessingRequestId(null);
     }
   };
-
 
   const getInitials = (name?: string | null) => {
     if (!name) return "PN";
@@ -242,7 +277,7 @@ export default function ProfilePage() {
     ? format(new Date(profile.createdAt), "MMMM d, yyyy")
     : (user?.metadata.creationTime ? format(new Date(user.metadata.creationTime), "MMMM d, yyyy") : "N/A");
 
-  if (authLoading || (loadingProfile && !profile)) { // Show skeleton if auth is loading OR profile data is loading and not yet available
+  if (authLoading || (loadingProfile && !profile)) {
     return (
       <div className="max-w-3xl mx-auto space-y-6">
         <div className="flex items-center gap-2 mb-4">
@@ -258,15 +293,13 @@ export default function ProfilePage() {
     );
   }
   
-  if (!user && !authLoading) { // If auth is done loading and there's no user, this typically means they should be redirected.
-    // The useEffect hook at the top handles redirection, so this state might not be visible for long.
+  if (!user && !authLoading) {
     return <div className="text-center">Please log in to view your profile.</div>;
   }
 
-  if (!profile && !loadingProfile && user) { // User is logged in, profile loading finished, but profile is null
+  if (!profile && !loadingProfile && user) {
     return <div className="text-center">User profile not found. It might be still creating or an error occurred. Please try refreshing.</div>;
   }
-
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -287,7 +320,6 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Incoming Friend Requests */}
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><UserPlus className="h-6 w-6"/>Incoming Friend Requests ({friendRequests.length})</CardTitle></CardHeader>
         <CardContent>
@@ -307,7 +339,6 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Incoming Network Join Requests */}
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Network className="h-6 w-6"/>Network Join Requests ({networkJoinRequests.length})</CardTitle></CardHeader>
         <CardContent>
@@ -327,8 +358,6 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-
-      {/* Friends List */}
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-6 w-6"/>Your Friends ({friends.length})</CardTitle></CardHeader>
         <CardContent>
@@ -345,7 +374,6 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* My Network Members List */}
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><UsersRound className="h-6 w-6"/>My Network Members ({myNetworkMembersList.length})</CardTitle></CardHeader>
         <CardContent>
@@ -361,7 +389,6 @@ export default function ProfilePage() {
           </div>
         </CardContent>
       </Card>
-
     </div>
   );
 }
