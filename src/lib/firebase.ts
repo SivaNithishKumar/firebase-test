@@ -2,7 +2,6 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore, Timestamp } from "firebase/firestore";
-import { getFunctions, type Functions } from "firebase/functions"; // Added Functions import
 
 // Define placeholder values to check against
 const PLACEHOLDER_API_KEY = "YOUR_API_KEY";
@@ -51,7 +50,6 @@ if (
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
-let functions: Functions; // Added functions instance
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
@@ -61,6 +59,5 @@ if (!getApps().length) {
 
 auth = getAuth(app);
 db = getFirestore(app);
-functions = getFunctions(app); // Initialized Functions
 
-export { app, auth, db, functions, Timestamp }; // Added functions to export
+export { app, auth, db, Timestamp };
