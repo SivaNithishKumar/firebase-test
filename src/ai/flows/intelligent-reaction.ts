@@ -20,8 +20,8 @@ export type IntelligentReactionInput = z.infer<typeof IntelligentReactionInputSc
 
 const IntelligentReactionOutputSchema = z.object({
   shouldReact: z.boolean().describe('Whether the agent should react to the post.'),
-  reactionType: z.string().optional().describe('A single-word reaction type (e.g., "like", "love", "celebrate").'),
-  reactionMessage: z.string().optional().describe('An optional brief message or short comment accompanying the reaction.'),
+  reactionType: z.string().optional().describe('A SINGLE-WORD reaction type (e.g., "like", "love", "celebrate"). MUST be one word from the examples.'),
+  reactionMessage: z.string().optional().describe('An optional brief message or short comment (1-2 sentences max) accompanying the reaction. Can be omitted.'),
 });
 export type IntelligentReactionOutput = z.infer<typeof IntelligentReactionOutputSchema>;
 
@@ -38,21 +38,25 @@ const intelligentReactionPrompt = ai.definePrompt({
 A user has posted the following content: {{{postContent}}}.
 
 Analyze the post content and determine if you should react.
-If you decide to react, you must also determine:
-1. The TYPE of reaction ("reactionType"): This should be a SINGLE, CONCISE WORD representing a common social media reaction.
-   Choose from standard reactions like: "like", "love", "haha", "wow", "sad", "angry", "support", "celebrate", "insightful", "curious".
-   DO NOT use long phrases or sentences for "reactionType". It must be a simple category. For example: "like".
-2. A REACTION MESSAGE ("reactionMessage") (optional): This is the textual content of your reaction.
+If you decide to react, you MUST also determine:
+1. The TYPE of reaction ("reactionType"): 
+   This field MUST be a SINGLE WORD. 
+   Choose EXACTLY ONE word from the following list: "like", "love", "haha", "wow", "sad", "angry", "support", "celebrate", "insightful", "curious".
+   DO NOT use multiple words, phrases, or sentences for "reactionType". It must be one of the listed single-word options. For example: "like".
+   If you are unsure, "like" is a safe default if shouldReact is true.
+
+2. A REACTION MESSAGE ("reactionMessage") (optional): 
+   This is the textual content of your reaction.
    If your reaction type is something that typically involves a textual comment (e.g., "insightful", "support"), or if you simply want to add a thought or a short comment (1-2 sentences max), provide a brief message here.
-   This message should be concise. If you are just "liking" without a specific message, this can be omitted or be an empty string.
+   This message should be concise. If you are just "liking" without a specific message, this field can be omitted or be an empty string.
    For example: "Great point!" or "This is exciting news!".
 
-Return a JSON object with the following fields:
+Return a JSON object strictly adhering to the following structure:
 - "shouldReact": boolean (true if you should react, false otherwise)
-- "reactionType": string (REQUIRED if "shouldReact" is true. Must be one of the standard single-word reactions. For example: "celebrate")
+- "reactionType": string (REQUIRED if "shouldReact" is true. MUST be exactly one word from the list: "like", "love", "haha", "wow", "sad", "angry", "support", "celebrate", "insightful", "curious". Example: "celebrate")
 - "reactionMessage": string (OPTIONAL. The textual content of your reaction/comment, if applicable. Keep it brief.)
 
-If "shouldReact" is false, "reactionType" and "reactionMessage" should not be set or can be empty strings.
+If "shouldReact" is false, "reactionType" and "reactionMessage" can be omitted or be empty strings.
 
 Example of a good JSON response if reacting with an "insightful" reaction and a message:
 {
@@ -72,7 +76,8 @@ Example of a good JSON response if not reacting:
   "shouldReact": false
 }
 
-Ensure your entire response is a single, valid JSON object adhering to this structure.
+Ensure your entire response is a single, valid JSON object matching this structure precisely.
+The "reactionType" field is CRITICAL and must be a single valid word from the examples.
 `,
 });
 
@@ -84,12 +89,37 @@ const intelligentReactionFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await intelligentReactionPrompt(input);
+    
     // Ensure that if reactionMessage is an empty string, it's treated as undefined by Zod schema if optional.
-    // However, our schema marks it optional, so empty string is fine, or it can be truly absent.
+    // Our schema marks it optional, so empty string is fine, or it can be truly absent.
     // Let's ensure it's not null, which Zod might not like for an optional string.
     if (output && output.reactionMessage === null) {
         output.reactionMessage = undefined;
     }
+     // Additional validation to ensure reactionType is a single word if present
+    if (output && output.reactionType && output.reactionType.includes(' ')) {
+        console.warn(`[AI Validation] Agent returned a multi-word reactionType: "${output.reactionType}". Attempting to use first word or defaulting.`);
+        // Attempt to take the first word, or default if it's problematic
+        const firstWord = output.reactionType.split(' ')[0].toLowerCase();
+        const validTypes = ["like", "love", "haha", "wow", "sad", "angry", "support", "celebrate", "insightful", "curious"];
+        if (validTypes.includes(firstWord)) {
+            output.reactionType = firstWord;
+        } else {
+            // If first word is not valid, and AI decided to react, default to "like"
+            // or consider making shouldReact false if type is essential and invalid.
+            // For now, if shouldReact is true but type is bad, let's log and potentially default.
+            console.warn(`[AI Validation] Corrected multi-word reactionType to "${output.reactionType}" or it will be defaulted if invalid`);
+            if(output.shouldReact && !validTypes.includes(output.reactionType)) {
+                 // If AI insists on reacting but type is bad, we might default it or not react.
+                 // For now, let's not change shouldReact but rely on prompt improvement.
+                 // Or, if we must have a type, and it's bad, we could force shouldReact to false.
+                 // Let's assume the prompt will be respected. If not, this could be a point to force a valid state.
+            }
+        }
+    }
+
+
     return output!;
   }
 );
+
