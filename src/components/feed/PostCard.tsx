@@ -9,10 +9,10 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Textarea } from "@/components/ui/textarea";
 import { ThumbsUp, MessageCircle, Share2, Bot, Send, Trash2, Reply as ReplyIcon } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, arrayUnion, arrayRemove, deleteDoc, collection, getDocs, query, where, type Timestamp } from "firebase/firestore";
+import { doc, updateDoc, arrayUnion, deleteDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -27,19 +27,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { agentDecision, type AgentDecisionInput, type AgentDecisionOutput } from "@/ai/flows/agent-decision-flow";
 
-
 interface PostCardProps {
   post: Post;
   currentUser: UserProfile | null;
 }
 
-// Helper to convert Firestore Timestamp to number or return original if not a Timestamp
 const convertTimestamp = (timestampField: any): number | any => {
     if (timestampField && typeof timestampField.toMillis === 'function') {
       return timestampField.toMillis();
     }
     return timestampField;
-  };
+};
 
 interface ReplyingToState {
   commentId: string;
@@ -62,12 +60,10 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   const [mentionableAgents, setMentionableAgents] = useState<Agent[]>([]);
   const mentionPopoverRef = useRef<HTMLDivElement>(null);
 
-
   useEffect(() => {
     const fetchUserAgentsAndPostAuthorAgents = async () => {
       if (currentUser) {
         let combinedAgents: Agent[] = [];
-        // Fetch current user's agents
         try {
           const userAgentsQuery = query(collection(db, "agents"), where("userId", "==", currentUser.uid));
           const userAgentSnapshot = await getDocs(userAgentsQuery);
@@ -76,7 +72,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
             const data = docSnap.data();
             currentUserAgentsList.push({ id: docSnap.id, ...data, createdAt: convertTimestamp(data.createdAt) } as Agent);
           });
-          setUserAgents(currentUserAgentsList); // For manual reactions by user's agents
+          setUserAgents(currentUserAgentsList);
           combinedAgents = [...currentUserAgentsList];
           console.log(`[PostCard ${post.id}] Fetched ${currentUserAgentsList.length} agents for current user ${currentUser.uid}`);
         } catch (error: any) {
@@ -84,7 +80,6 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           toast({ title: "Error Fetching Your Agents", description: `Could not load your AI agents: ${error.message || 'Unknown error'}`, variant: "destructive" });
         }
 
-        // Fetch post author's agents if different from current user
         if (post.userId && post.userId !== currentUser.uid) {
           try {
             const postAuthorAgentsQuery = query(collection(db, "agents"), where("userId", "==", post.userId));
@@ -94,20 +89,16 @@ export function PostCard({ post, currentUser }: PostCardProps) {
               const data = docSnap.data();
               postAuthorAgentsList.push({ id: docSnap.id, ...data, createdAt: convertTimestamp(data.createdAt) } as Agent);
             });
-            // Add post author's agents to combined list, avoiding duplicates
             postAuthorAgentsList.forEach(pa => {
               if (!combinedAgents.find(ca => ca.id === pa.id)) {
                 combinedAgents.push(pa);
               }
             });
             console.log(`[PostCard ${post.id}] Fetched ${postAuthorAgentsList.length} agents for post author ${post.userId}`);
-          } catch (error: any)
-          {
+          } catch (error: any) {
             console.error(`[PostCard ${post.id}] Error fetching post author's agents:`, error);
-            // Non-critical, so maybe a silent fail or a less intrusive log
           }
         }
-        // Deduplicate by agent name, as names are used for mentions.
         const uniqueAgentsByName = Array.from(new Map(combinedAgents.map(agent => [agent.name, agent])).values());
         setMentionableAgents(uniqueAgentsByName);
         console.log(`[PostCard ${post.id}] Total ${uniqueAgentsByName.length} mentionable agents populated.`);
@@ -116,15 +107,14 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     fetchUserAgentsAndPostAuthorAgents();
   }, [currentUser, post.id, post.userId, toast]);
 
-
-  const timeAgo = post.createdAt ? formatDistanceToNow(new Date(post.createdAt), { addSuffix: true }) : 'just now';
+  const timeAgo = post.createdAt ? formatDistanceToNow(new Date(convertTimestamp(post.createdAt)), { addSuffix: true }) : 'just now';
 
   const getInitials = (name?: string | null) => {
     if (!name) return "??";
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().substring(0,2);
   };
 
-  const handleManualReaction = async (newReactionType: string) => {
+  const handleReaction = async (newReactionType: string) => {
     if (!currentUser) {
       toast({ title: "Login Required", description: "Please login to react.", variant: "destructive" });
       return;
@@ -136,7 +126,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
 
     const reactingAgent = userAgents[0];
     const postRef = doc(db, "posts", post.id);
-    console.log(`[Manual Reaction ${post.id}] Agent ${reactingAgent.name} (ID: ${reactingAgent.id}) attempting to '${newReactionType}' post`);
+    console.log(`[Reaction Trigger ${post.id}] Agent ${reactingAgent.name} (ID: ${reactingAgent.id}) attempting to '${newReactionType}' post`);
 
     try {
       const currentReactions = post.reactions || [];
@@ -147,7 +137,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
 
       if (thisAgentExistingReactionOfSameType) {
         newReactionsArray = otherAgentsReactions;
-        console.log(`[Manual Reaction ${post.id}] Agent ${reactingAgent.name} removing reaction '${newReactionType}'.`);
+        console.log(`[Reaction Trigger ${post.id}] Agent ${reactingAgent.name} removing reaction '${newReactionType}'.`);
         toast({ title: "Reaction Removed", description: `${reactingAgent.name} removed their ${newReactionType} reaction.` });
       } else {
         const newReactionToAdd: ReactionType = {
@@ -158,29 +148,23 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           id: `${reactingAgent.id}-${Date.now()}-reaction-${newReactionType}-${Math.random().toString(36).substring(2, 9)}`,
         };
         newReactionsArray = [...otherAgentsReactions, newReactionToAdd];
-        console.log(`[Manual Reaction ${post.id}] Agent ${reactingAgent.name} adding/changing to reaction '${newReactionType}'.`);
+        console.log(`[Reaction Trigger ${post.id}] Agent ${reactingAgent.name} adding/changing to reaction '${newReactionType}'.`);
         toast({ title: "Agent Reacted!", description: `${reactingAgent.name} reacted with ${newReactionType}.` });
       }
-
       await updateDoc(postRef, { reactions: newReactionsArray });
-      console.log(`[Manual Reaction ${post.id}] Reactions updated successfully in Firestore.`);
-
+      console.log(`[Reaction Trigger ${post.id}] Reactions updated successfully for agent ${reactingAgent.name}.`);
     } catch (error: any) {
-      console.error(`[Manual Reaction ${post.id}] Error for agent ${reactingAgent.name} reacting:`, error);
+      console.error(`[Reaction Trigger ${post.id}] Error for agent ${reactingAgent.name} reacting:`, error);
       toast({ title: "Reaction Error", description: `Could not process reaction: ${error.message || 'Unknown error'}`, variant: "destructive" });
     }
   };
 
   const triggerAgentReplyToComment = async (triggeringUserCommentContent: string, triggeringUserDisplayName: string, fullCommentThread: CommentType[]) => {
-    if (!currentUser) {
-        console.warn(`[AI Reply Trigger ${post.id}] Current user context missing. Cannot robustly trigger AI comment reply.`);
+    if (!currentUser || !post.userId) {
+        console.warn(`[AI Reply Trigger ${post.id}] Missing user or post owner context. Cannot trigger AI comment reply.`);
         return;
     }
-    if (!post.userId) {
-        console.warn(`[AI Reply Trigger ${post.id}] Post owner ID (post.userId) is missing. Cannot trigger AI comment reply.`);
-        return;
-    }
-    console.log(`[AI Reply Trigger ${post.id}] Attempting to trigger reply from one of post owner's (${post.userId}) agents.`);
+    console.log(`[AI Reply Trigger ${post.id}] User ${triggeringUserDisplayName} commented. Attempting to trigger reply from one of post owner's (${post.userId}) agents.`);
 
     let postOwnerAgents: Agent[] = [];
     try {
@@ -194,15 +178,13 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     }
 
     if (postOwnerAgents.length === 0) {
-        console.log(`[AI Reply Trigger ${post.id}] No agents found for post owner (${post.userId}) to reply.`);
+        console.log(`[AI Reply Trigger ${post.id}] No agents found for post owner (${post.userId}) to generate a reply.`);
         return;
     }
     const respondingAgent = postOwnerAgents[Math.floor(Math.random() * postOwnerAgents.length)];
-
-    console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} (ID: ${respondingAgent.id}) preparing to respond to comment by ${triggeringUserDisplayName}`);
+    console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} (ID: ${respondingAgent.id}) selected to respond.`);
 
     const existingCommentsForAIContext = fullCommentThread.map(c => `${c.authorName}: ${c.content}`);
-
     const aiInput: AgentDecisionInput = {
       agentName: respondingAgent.name,
       agentPersona: respondingAgent.persona,
@@ -210,60 +192,49 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       agentPsychologicalProfile: respondingAgent.psychologicalProfile,
       agentBackstory: respondingAgent.backstory,
       agentLanguageStyle: respondingAgent.languageStyle,
-      agentMemorySummary: `Replying to a comment by ${triggeringUserDisplayName} on a post by ${post.userDisplayName || 'Original Poster'}. The latest comment in the thread is: "${triggeringUserCommentContent}". Consider any @mentions.`,
+      agentMemorySummary: `Replying to a comment by ${triggeringUserDisplayName} on a post by ${post.userDisplayName || 'Original Poster'}. The latest comment in the thread is: "${triggeringUserCommentContent}". Review thread for any @${respondingAgent.name} tags.`,
       postContent: post.content,
       postImageUrl: post.imageUrl || null,
       postAuthorName: post.userDisplayName || "Original Poster",
       existingComments: existingCommentsForAIContext,
       isReplyContext: true,
     };
-    console.log(`[AI Reply Trigger ${post.id}] Input for agent ${respondingAgent.name}:`, JSON.stringify(aiInput, null, 2));
+    console.log(`[AI Reply Trigger ${post.id}] Input for agent ${respondingAgent.name} (agentDecisionFlow):`, JSON.stringify(aiInput, null, 2));
 
     try {
       const aiOutput: AgentDecisionOutput = await agentDecision(aiInput);
-      console.log(`[AI Reply Trigger ${post.id}] Output from agent ${respondingAgent.name}:`, JSON.stringify(aiOutput, null, 2));
+      console.log(`[AI Reply Trigger ${post.id}] Output from agent ${respondingAgent.name} (agentDecisionFlow):`, JSON.stringify(aiOutput, null, 2));
 
-
-      if (aiOutput.decision === "COMMENT_ONLY" || aiOutput.decision === "REACT_AND_COMMENT") {
-        if (aiOutput.commentText && aiOutput.commentText.trim() !== "") {
-            const agentCommentData: CommentType = {
-                postId: post.id,
-                agentId: respondingAgent.id,
-                authorName: respondingAgent.name,
-                authorAvatarUrl: respondingAgent.avatarUrl || `https://placehold.co/40x40/A9A9A9/000000.png?text=${getInitials(respondingAgent.name)}`,
-                content: aiOutput.commentText,
-                createdAt: Date.now(),
-                id: `${respondingAgent.id}-comment-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-                replyToCommentId: fullCommentThread.length > 0 ? fullCommentThread[fullCommentThread.length -1].id : undefined,
-                replyToAuthorName: fullCommentThread.length > 0 ? fullCommentThread[fullCommentThread.length -1].authorName : undefined,
-            };
-
-            console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} attempting to add comment to Firestore:`, JSON.stringify(agentCommentData));
-            const postRef = doc(db, "posts", post.id);
-            await updateDoc(postRef, { comments: arrayUnion(agentCommentData) });
-            console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} successfully added comment to Firestore.`);
-            toast({ title: "Agent Replied", description: `${respondingAgent.name} added a comment.` });
-        } else {
-          console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} decided to comment, but commentText is missing/empty.`);
-        }
+      if ((aiOutput.decision === "COMMENT_ONLY" || aiOutput.decision === "REACT_AND_COMMENT") && aiOutput.commentText && aiOutput.commentText.trim() !== "") {
+        const agentCommentData: CommentType = {
+            postId: post.id,
+            agentId: respondingAgent.id,
+            authorName: respondingAgent.name,
+            authorAvatarUrl: respondingAgent.avatarUrl || `https://placehold.co/40x40/A9A9A9/000000.png?text=${getInitials(respondingAgent.name)}`,
+            content: aiOutput.commentText,
+            createdAt: Date.now(),
+            id: `${respondingAgent.id}-comment-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            replyToCommentId: fullCommentThread.length > 0 ? fullCommentThread[fullCommentThread.length -1].id : undefined,
+            replyToAuthorName: fullCommentThread.length > 0 ? fullCommentThread[fullCommentThread.length -1].authorName : undefined,
+        };
+        console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} attempting to add comment to Firestore:`, JSON.stringify(agentCommentData));
+        const postRef = doc(db, "posts", post.id);
+        await updateDoc(postRef, { comments: arrayUnion(agentCommentData) });
+        console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} successfully added comment to Firestore.`);
+        toast({ title: "Agent Replied", description: `${respondingAgent.name} added a comment.` });
       } else {
-         console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} decided not to comment (Decision: ${aiOutput.decision}).`);
+         console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} decided not to comment (Decision: ${aiOutput.decision}, Comment: "${aiOutput.commentText}").`);
       }
     } catch (error: any) {
       console.error(`[AI Reply Trigger ${post.id}] Error with agent ${respondingAgent.name} AI flow or Firestore update:`, error);
-      toast({
-        title: "AI Reply Error",
-        description: `Agent ${respondingAgent.name} failed to comment. ${error.message || 'Unknown AI error'}`,
-        variant: "destructive"
-      });
+      toast({ title: "AI Reply Error", description: `Agent ${respondingAgent.name} failed to comment. ${error.message || 'Unknown AI error'}`, variant: "destructive" });
     }
   };
-
 
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser) return;
     setIsCommenting(true);
-    const submittedCommentContent = newComment;
+    const submittedCommentContent = newComment; // Capture content before reset
     const userDisplayNameForAI = currentUser.displayName || "Anonymous User";
     console.log(`[User Comment ${post.id}] User ${currentUser.uid} attempting to add comment: "${submittedCommentContent}"`);
 
@@ -286,11 +257,12 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       console.log(`[User Comment ${post.id}] User comment data for Firestore:`, JSON.stringify(newCommentData));
       await updateDoc(postRef, { comments: arrayUnion(newCommentData) });
       console.log(`[User Comment ${post.id}] User comment added successfully to Firestore.`);
+      
+      const updatedComments = [...(post.comments || []), newCommentData]; // Create updated list for AI context
 
-      const updatedComments = [...(post.comments || []), newCommentData];
-
-      setNewComment("");
+      setNewComment(""); // Reset input after capturing content
       setReplyingTo(null);
+      setShowMentionPopover(false); // Close popover on submit
       toast({ title: "Comment Added", description: "Your comment has been posted." });
 
       await triggerAgentReplyToComment(submittedCommentContent, userDisplayNameForAI, updatedComments);
@@ -322,11 +294,10 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   const startReply = (comment: CommentType) => {
     setReplyingTo({ commentId: comment.id, authorName: comment.authorName });
     setNewComment(`@${comment.authorName} `);
-    setShowComments(true);
-    commentInputRef.current?.focus();
+    setShowComments(true); // Ensure comments section is open
+    setTimeout(() => commentInputRef.current?.focus(), 0); // Focus after state update
   };
 
-  // Mention handling logic
   const handleCommentInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
     setNewComment(text);
@@ -334,16 +305,23 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     if (!commentInputRef.current) return;
     const cursorPosition = commentInputRef.current.selectionStart;
     const textBeforeCursor = text.substring(0, cursorPosition);
-    const atMatch = textBeforeCursor.match(/@(\w*)$/);
+    
+    // Regex to find @ followed by characters suitable for a name search, at the end of the line or text before cursor
+    const atMatch = textBeforeCursor.match(/@([\w\s'"-À-ÖØ-öø-ÿ]*)$/i);
 
     if (atMatch) {
       const searchTerm = atMatch[1];
-      setMentionSearchTerm(searchTerm);
-      const filtered = mentionableAgents.filter(agent =>
-        agent.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setMentionSuggestions(filtered);
-      setShowMentionPopover(filtered.length > 0);
+      setMentionSearchTerm(searchTerm); // Store the full term being typed
+      if (searchTerm.length > 0) { // Only filter if there's something to search for
+        const filtered = mentionableAgents.filter(agent =>
+          agent.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+        setMentionSuggestions(filtered);
+        setShowMentionPopover(filtered.length > 0);
+      } else { // If just "@" is typed, show all mentionable agents or a subset
+        setMentionSuggestions(mentionableAgents.slice(0, 5)); // Show first 5 or all
+        setShowMentionPopover(mentionableAgents.length > 0);
+      }
       setActiveSuggestionIndex(0);
     } else {
       setShowMentionPopover(false);
@@ -355,24 +333,28 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     if (commentInputRef.current && mentionSearchTerm !== null) {
       const text = newComment;
       const currentCursorPos = commentInputRef.current.selectionStart;
+      
+      // Find the start of the @mention pattern
+      // This regex needs to find the beginning of the current @mention sequence
       const textBeforeCursor = text.substring(0, currentCursorPos);
-      const searchTermPattern = new RegExp(`@${mentionSearchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
-      const atSymbolIndex = textBeforeCursor.search(searchTermPattern);
+      const match = textBeforeCursor.match(/@([\w\s'"-À-ÖØ-öø-ÿ]*)$/i);
 
+      if (match) {
+          const atSymbolIndex = match.index;
+          if (atSymbolIndex !== undefined) {
+            const newText =
+              text.substring(0, atSymbolIndex) + // Text before @
+              `@${agentName} ` +                  // Selected agent
+              text.substring(currentCursorPos);     // Text after cursor
 
-      if (atSymbolIndex !== -1) {
-        const newText =
-          text.substring(0, atSymbolIndex) +
-          `@${agentName} ` +
-          text.substring(currentCursorPos);
-        setNewComment(newText);
+            setNewComment(newText);
 
-        // Attempt to set cursor position after the inserted mention
-        const newCursorPosition = atSymbolIndex + `@${agentName} `.length;
-        setTimeout(() => {
-          commentInputRef.current?.focus();
-          commentInputRef.current?.setSelectionRange(newCursorPosition, newCursorPosition);
-        }, 0);
+            const newCursorPosition = atSymbolIndex + `@${agentName} `.length;
+            setTimeout(() => {
+              commentInputRef.current?.focus();
+              commentInputRef.current?.setSelectionRange(newCursorPosition, newCursorPosition);
+            }, 0);
+          }
       }
     }
     setShowMentionPopover(false);
@@ -397,13 +379,12 @@ export function PostCard({ post, currentUser }: PostCardProps) {
         e.preventDefault();
         setShowMentionPopover(false);
       }
-    } else if (e.key === 'Enter' && !e.shiftKey) {
+    } else if (e.key === 'Enter' && !e.shiftKey && !showMentionPopover) { // Only submit if popover is not active
         e.preventDefault();
         handleAddComment();
     }
   };
 
-  // Close popover if clicked outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (mentionPopoverRef.current && !mentionPopoverRef.current.contains(event.target as Node) &&
@@ -419,7 +400,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
 
 
   return (
-    <Card className="overflow-hidden shadow-lg rounded-xl border">
+    <Card className="overflow-visible shadow-lg rounded-xl border"> {/* Ensure overflow is visible for popover */}
       <CardHeader className="p-4">
         <div className="flex items-center space-x-3">
           <Avatar className="h-10 w-10 border">
@@ -487,13 +468,13 @@ export function PostCard({ post, currentUser }: PostCardProps) {
         )}
 
         <div className="flex w-full justify-around border-t pt-2">
-          <Button variant="ghost" className="flex-1" onClick={() => handleManualReaction('like')} disabled={!currentUser || userAgents.length === 0}>
+          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('like')} disabled={!currentUser || userAgents.length === 0}>
             <ThumbsUp className="mr-2 h-4 w-4" /> Like
           </Button>
           <Button variant="ghost" className="flex-1" onClick={() => setShowComments(!showComments)}>
             <MessageCircle className="mr-2 h-4 w-4" /> Comment ({post.comments?.length || 0})
           </Button>
-          <Button variant="ghost" className="flex-1" onClick={() => handleManualReaction('celebrate')} disabled={!currentUser || userAgents.length === 0}>
+          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('celebrate')} disabled={!currentUser || userAgents.length === 0}>
             <Share2 className="mr-2 h-4 w-4" /> Celebrate
           </Button>
         </div>
@@ -535,55 +516,56 @@ export function PostCard({ post, currentUser }: PostCardProps) {
             )}
 
             {currentUser && (
-              <div className="flex items-start space-x-2 pt-3 border-t relative"> {/* Added relative positioning here */}
+              <div className="flex items-start space-x-2 pt-3 border-t">
                 <Avatar className="h-8 w-8 border">
                   <AvatarImage src={currentUser.photoURL || undefined} />
                   <AvatarFallback>{getInitials(currentUser.displayName)}</AvatarFallback>
                 </Avatar>
-                <div className="flex-1 flex items-center">
-                <Textarea
-                  ref={commentInputRef}
-                  placeholder={replyingTo ? `Replying to @${replyingTo.authorName}...` : "Write a comment..."}
-                  value={newComment}
-                  onChange={handleCommentInputChange}
-                  onKeyDown={handleCommentKeyDown}
-                  className="mr-2 text-sm min-h-[40px] h-10 resize-none"
-                  rows={1}
-                />
-                <Button size="icon" onClick={handleAddComment} disabled={isCommenting || !newComment.trim()}>
-                  {isCommenting ? <Bot className="h-4 w-4 animate-spin text-primary" /> : <Send className="h-4 w-4" />}
-                </Button>
-                </div>
-                 {showMentionPopover && mentionSuggestions.length > 0 && (
-                  <div
-                    ref={mentionPopoverRef}
-                    className="absolute z-10 w-full sm:w-3/4 md:w-1/2 bg-background border border-border shadow-md rounded-md mt-12 max-h-40 overflow-y-auto"
-                    style={{ top: '100%', left: '40px' }} // Adjust '40px' based on Avatar width + gap
-                  >
-                    {mentionSuggestions.map((agent, index) => (
-                      <div
-                        key={agent.id}
-                        className={`p-2 hover:bg-accent cursor-pointer ${
-                          index === activeSuggestionIndex ? "bg-accent" : ""
-                        }`}
-                        onClick={() => selectMention(agent.name)}
-                        onMouseEnter={() => setActiveSuggestionIndex(index)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6 text-xs">
-                            <AvatarImage src={agent.avatarUrl} alt={agent.name} />
-                            <AvatarFallback>{getInitials(agent.name)}</AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm font-medium">{agent.name}</span>
-                        </div>
-                      </div>
-                    ))}
+                <div className="flex-1 relative"> {/* Container for textarea and popover, set to relative */}
+                  <div className="flex items-center">
+                    <Textarea
+                      ref={commentInputRef}
+                      placeholder={replyingTo ? `Replying to @${replyingTo.authorName}...` : "Write a comment..."}
+                      value={newComment}
+                      onChange={handleCommentInputChange}
+                      onKeyDown={handleCommentKeyDown}
+                      className="mr-2 text-sm min-h-[40px] h-10 resize-none"
+                      rows={1}
+                    />
+                    <Button size="icon" onClick={handleAddComment} disabled={isCommenting || !newComment.trim()}>
+                      {isCommenting ? <Bot className="h-4 w-4 animate-spin text-primary" /> : <Send className="h-4 w-4" />}
+                    </Button>
                   </div>
-                )}
+                  {showMentionPopover && mentionSuggestions.length > 0 && (
+                    <div
+                      ref={mentionPopoverRef}
+                      className="absolute z-50 w-full bg-background border border-border shadow-lg rounded-md max-h-48 overflow-y-auto mt-1" // mt-1 for spacing
+                    >
+                      {mentionSuggestions.map((agent, index) => (
+                        <div
+                          key={agent.id}
+                          className={`p-2 hover:bg-accent cursor-pointer text-sm ${
+                            index === activeSuggestionIndex ? "bg-accent" : ""
+                          }`}
+                          onClick={() => selectMention(agent.name)}
+                          onMouseEnter={() => setActiveSuggestionIndex(index)}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6 text-xs">
+                              <AvatarImage src={agent.avatarUrl} alt={agent.name} />
+                              <AvatarFallback>{getInitials(agent.name)}</AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium">{agent.name}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
              {replyingTo && (
-                <Button variant="ghost" size="sm" onClick={() => { setReplyingTo(null); setNewComment(""); }} className="text-xs text-muted-foreground w-full justify-start">
+                <Button variant="ghost" size="sm" onClick={() => { setReplyingTo(null); setNewComment(""); setShowMentionPopover(false); }} className="text-xs text-muted-foreground w-full justify-start">
                     Cancel reply to @{replyingTo.authorName}
                 </Button>
             )}
@@ -593,5 +575,3 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     </Card>
   );
 }
-
-    
