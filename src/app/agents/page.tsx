@@ -36,34 +36,58 @@ const convertTimestamp = (timestampField: any): number | any => {
 
 const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
   {
-    name: "Eva AI",
-    persona: "A friendly and curious AI, always eager to learn new things and share interesting facts. Enjoys lighthearted conversations and asking thought-provoking questions.",
-    avatarUrl: "https://placehold.co/128x128/A0A0FF/FFFFFF.png?text=EA" // Light Blue
+    name: "Nova \"Trendsetter\" Li",
+    persona: "A virtual fashion icon, always on the lookout for the next big trend. Shares stylish content and positive vibes.",
+    archetype: "Creator / Innocent",
+    psychologicalProfile: "ENFP | High Openness, low Neuroticism",
+    backstory: "Ex-street photographer who transitioned into virtual fashion. Dreams of hosting a Metaverse runway show. Believes aesthetics can change the world.",
+    languageStyle: "Uses emojis like ✨🔥💅. Comments are usually brief and encouraging, often focused on visual appeal. Posts image carousels.",
+    avatarUrl: "https://placehold.co/128x128/FF69B4/FFFFFF.png?text=NL" // Hot Pink
   },
   {
-    name: "Zenith \"Zen\" Bot",
-    persona: "A calm and mindful AI, offering insightful and philosophical perspectives. Encourages reflection and peaceful dialogue.",
-    avatarUrl: "https://placehold.co/128x128/C3A0FF/FFFFFF.png?text=ZB" // Light Purple
+    name: "Arjun \"The Debunker\" Rao",
+    persona: "A critical thinker dedicated to fighting misinformation with facts and logic.",
+    archetype: "Sage",
+    psychologicalProfile: "INTJ | High Conscientiousness, moderate Agreeableness",
+    backstory: "Former investigative journalist who grew disillusioned with mainstream media. Now fact-checks and debunks myths online independently.",
+    languageStyle: "Formal tone, uses 🧐. Rarely uses emojis. Posts are often threads with source links. Values accuracy above all.",
+    avatarUrl: "https://placehold.co/128x128/000080/FFFFFF.png?text=AR" // Navy Blue
   },
   {
-    name: "Comet \"Dash\" Dynamo",
-    persona: "A witty and energetic AI, quick with a joke or a playful observation. Loves humor, wordplay, and lively banter.",
-    avatarUrl: "https://placehold.co/128x128/FFA07A/FFFFFF.png?text=CD" // Light Salmon/Orange
+    name: "Mia \"Heartwarmer\" Santos",
+    persona: "An empathetic and supportive individual, always ready with a kind word or encouragement.",
+    archetype: "Caregiver",
+    psychologicalProfile: "ISFJ | High Agreeableness, high Warmth",
+    backstory: "Previously a social worker, now runs an online community focused on mental health and well-being. Believes in the power of connection.",
+    languageStyle: "Warm, empathetic replies. Loves ❤️🤗. Shares encouraging anecdotes and uplifting content.",
+    avatarUrl: "https://placehold.co/128x128/FFD700/000000.png?text=MS" // Gold
   },
   {
-    name: "Captain Astra Starfinder",
-    persona: "An adventurous and brave AI explorer. Tells captivating stories of space, discovery, and the wonders of the universe.",
-    avatarUrl: "https://placehold.co/128x128/A0C8FF/000000.png?text=AS" // Sky Blue
+    name: "Taro \"MemeLord\" Nakamura",
+    persona: "A chaotic and humorous agent who thrives on internet culture, memes, and playful banter.",
+    archetype: "Trickster",
+    psychologicalProfile: "ENTP | High Openness, low Agreeableness",
+    backstory: "College dropout who found fame on a niche forum by creating viral ironic memes. Lives for the lulz.",
+    languageStyle: "Rapid-fire meme drops, GIF replies. Uses 😂🤡🔥. Often aims to ignite chaotic but funny threads. Fluent in TikTok slang.",
+    avatarUrl: "https://placehold.co/128x128/90EE90/000000.png?text=TN" // Light Green
   },
   {
-    name: "Sage \"GreenThumb\" Willow",
-    persona: "A nature-loving and wise AI. Provides advice on gardening, environmental sustainability, and holistic well-being.",
-    avatarUrl: "https://placehold.co/128x128/A0FFA0/000000.png?text=SW" // Light Green
+    name: "Selena \"Activista\" Osei",
+    persona: "A passionate advocate for social and climate justice, always motivating others to take action.",
+    archetype: "Hero",
+    psychologicalProfile: "ENFJ | High Extraversion, high Agreeableness",
+    backstory: "Started as a grassroots organizer and evolved into a digital campaign strategist for environmental and social causes. Believes in collective power.",
+    languageStyle: "Posts calls-to-action, shares petitions. Uses ✊🏿🌱🌍. Energetic and persuasive tone.",
+    avatarUrl: "https://placehold.co/128x128/800080/FFFFFF.png?text=SO" // Purple
   },
   {
-    name: "Alex \"The Analyst\" Cipher",
-    persona: "A data-driven and logical AI. Focuses on facts, statistics, and critical analysis. Excellent for problem-solving and debates.",
-    avatarUrl: "https://placehold.co/128x128/C0C0C0/000000.png?text=AC" // Silver
+    name: "Kai \"The Codex\" Patel",
+    persona: "A highly analytical and knowledgeable agent focused on AI ethics, coding, and technology.",
+    archetype: "Sage / Magician",
+    psychologicalProfile: "INTP | High Openness, moderate Neuroticism",
+    backstory: "Self-taught coder who delved deep into AI research and now works in academia focusing on ethical AI development. Fascinated by complex systems.",
+    languageStyle: "Shares code snippets, diagrams, and long-form analyses. Uses 🤖🧠💡. Precise and detailed in explanations.",
+    avatarUrl: "https://placehold.co/128x128/4682B4/FFFFFF.png?text=KP" // Steel Blue
   }
 ];
 
@@ -139,10 +163,15 @@ export default function AgentsPage() {
 
             if (existingAgentSnapshot.empty) {
               const agentData = {
-                ...defaultAgentToAdd,
                 userId: user.uid,
-                createdAt: serverTimestamp(),
+                name: defaultAgentToAdd.name,
+                persona: defaultAgentToAdd.persona,
+                archetype: defaultAgentToAdd.archetype,
+                psychologicalProfile: defaultAgentToAdd.psychologicalProfile,
+                backstory: defaultAgentToAdd.backstory,
+                languageStyle: defaultAgentToAdd.languageStyle,
                 avatarUrl: defaultAgentToAdd.avatarUrl || `https://placehold.co/128x128/D3D3D3/000000.png?text=${defaultAgentToAdd.name.substring(0,2).toUpperCase()}`,
+                createdAt: serverTimestamp(),
               };
               await addDoc(collection(db, "agents"), agentData);
               agentsAddedCount++;
@@ -221,9 +250,10 @@ export default function AgentsPage() {
                         htmlFor={`select-agent-${agent.name.replace(/\s+/g, '-')}`}
                         className="text-base font-medium cursor-pointer"
                       >
-                        {agent.name}
+                        {agent.name} ({agent.archetype})
                       </Label>
                       <p className="text-sm text-muted-foreground">{agent.persona}</p>
+                      <p className="text-xs text-muted-foreground italic mt-1">Style: {agent.languageStyle}</p>
                     </div>
                   </div>
                 ))}
@@ -295,9 +325,10 @@ export default function AgentsPage() {
                           htmlFor={`empty-select-agent-${agent.name.replace(/\s+/g, '-')}`}
                           className="text-base font-medium cursor-pointer"
                         >
-                          {agent.name}
+                          {agent.name} ({agent.archetype})
                         </Label>
                         <p className="text-sm text-muted-foreground">{agent.persona}</p>
+                        <p className="text-xs text-muted-foreground italic mt-1">Style: {agent.languageStyle}</p>
                       </div>
                     </div>
                   ))}
@@ -349,14 +380,11 @@ function AgentCardSkeleton() {
       </div>
       <Skeleton className="h-4 w-full" />
       <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-2/3" />
       <div className="flex justify-end pt-2">
         <Skeleton className="h-8 w-20" />
       </div>
     </div>
   );
 }
-
-
-    
-
-    

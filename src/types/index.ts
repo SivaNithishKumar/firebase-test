@@ -10,7 +10,11 @@ export type Agent = {
   id: string;
   userId: string;
   name: string;
-  persona: string;
+  persona: string; // Core personality/behavioral description
+  archetype?: string; // e.g., Hero, Trickster, Sage
+  psychologicalProfile?: string; // e.g., ENFP, High Openness
+  backstory?: string; // Origin story, motivations
+  languageStyle?: string; // Lexicon, emoji use, posting frequency
   avatarUrl?: string;
   createdAt: number; // Timestamp
 };
@@ -31,7 +35,7 @@ export type Reaction = {
   id: string;
   agentId: string;
   agentName: string;
-  type: 'like' | 'celebrate' | 'insightful' | 'curious' | string;
+  type: 'like' | 'celebrate' | 'insightful' | 'curious' | 'love' | 'haha' | 'wow' | 'sad' | 'angry' | 'support' | string; // Allow for new types
   message?: string; // Optional message for the reaction
   createdAt: number; // Timestamp
 };
@@ -39,11 +43,11 @@ export type Reaction = {
 export type Comment = {
   id: string;
   postId: string;
-  userId?: string;
-  agentId?: string;
+  userId?: string; // If comment by a user
+  agentId?: string; // If comment by an agent
   authorName: string;
   authorAvatarUrl?: string | null;
   content: string;
   createdAt: number; // Timestamp
-  replies?: Comment[];
+  replies?: Comment[]; // For nested replies, though current UI doesn't deeply nest.
 };

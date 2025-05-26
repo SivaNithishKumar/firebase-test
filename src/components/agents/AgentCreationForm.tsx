@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
@@ -18,7 +18,11 @@ import { Loader2, Save } from "lucide-react";
 
 const agentSchema = z.object({
   name: z.string().min(2, "Agent name must be at least 2 characters.").max(50, "Agent name is too long."),
-  persona: z.string().min(10, "Persona description must be at least 10 characters.").max(1000, "Persona description is too long."),
+  persona: z.string().min(10, "Core persona description must be at least 10 characters.").max(1000, "Persona description is too long."),
+  archetype: z.string().min(2, "Archetype must be at least 2 characters.").max(100).optional().or(z.literal("")),
+  psychologicalProfile: z.string().min(2, "Psychological profile must be at least 2 characters.").max(200).optional().or(z.literal("")),
+  backstory: z.string().min(10, "Backstory must be at least 10 characters.").max(2000).optional().or(z.literal("")),
+  languageStyle: z.string().min(5, "Language style must be at least 5 characters.").max(1000).optional().or(z.literal("")),
   avatarUrl: z.string().url("Invalid avatar URL (must be https).").optional().refine(val => !val || val.startsWith("https://placehold.co/") || val.startsWith("https://"), {
     message: "Avatar URL must be a valid https URL or from placehold.co.",
   }).or(z.literal("")),
@@ -40,6 +44,10 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
     defaultValues: {
       name: "",
       persona: "",
+      archetype: "",
+      psychologicalProfile: "",
+      backstory: "",
+      languageStyle: "",
       avatarUrl: "",
     },
   });
@@ -48,8 +56,13 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
     setIsSubmitting(true);
     try {
       const agentData = {
-        ...data,
         userId,
+        name: data.name,
+        persona: data.persona,
+        archetype: data.archetype || null, // Store as null if empty
+        psychologicalProfile: data.psychologicalProfile || null,
+        backstory: data.backstory || null,
+        languageStyle: data.languageStyle || null,
         avatarUrl: data.avatarUrl || `https://placehold.co/128x128/D3D3D3/000000.png?text=${data.name.substring(0,2).toUpperCase()}`,
         createdAt: serverTimestamp(),
       };
@@ -70,7 +83,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <CardHeader>
             <CardTitle>Agent Details</CardTitle>
-            <CardDescription>Provide the information for your new AI agent.</CardDescription>
+            <CardDescription>Craft the identity of your new AI agent. The more detailed, the better!</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <FormField
@@ -80,7 +93,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
                 <FormItem>
                   <FormLabel>Agent Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="E.g., Eva AI, Sparky Bot" {...field} />
+                    <Input placeholder="E.g., Nova 'Trendsetter' Li" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -91,17 +104,76 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
               name="persona"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Persona Description</FormLabel>
+                  <FormLabel>Core Persona Description</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Describe the agent's personality, background, and how it should interact. Be detailed!"
+                      placeholder="Describe the agent's primary personality, key behaviors, and how it generally interacts. (e.g., A virtual fashion icon, always on the lookout for the next big trend...)"
+                      {...field}
+                      className="min-h-[100px]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+             <FormField
+              control={form.control}
+              name="archetype"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Archetype (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="E.g., Creator / Innocent, Sage, Trickster" {...field} />
+                  </FormControl>
+                  <FormDescription>Jungian or community archetype that grounds the agent.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="psychologicalProfile"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Psychological Profile (Optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="E.g., ENFP | High Openness, low Neuroticism" {...field} />
+                  </FormControl>
+                  <FormDescription>Big Five, MBTI, or other relevant psychological traits.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="backstory"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Backstory (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Describe the agent's origin story, career, personal goals, hidden motivations, significant life events..."
                       {...field}
                       className="min-h-[150px]"
                     />
                   </FormControl>
-                  <FormDescription>
-                    This will guide the AI's behavior and responses.
-                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="languageStyle"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Language & Style Guide (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Specify typical lexicon, emoji vocabulary, posting frequency, favored media (memes, text essays), tone (e.g., formal, sarcastic, bubbly)..."
+                      {...field}
+                      className="min-h-[100px]"
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

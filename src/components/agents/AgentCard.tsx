@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Agent } from "@/types";
@@ -5,7 +6,7 @@ import Image from "next/image";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Bot, Edit3, Trash2 } from "lucide-react";
+import { Bot, Edit3, Trash2, ShieldQuestion, Brain, History, Palette } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
@@ -22,6 +23,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { buttonVariants } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge";
 
 
 interface AgentCardProps {
@@ -59,17 +61,28 @@ export function AgentCard({ agent }: AgentCardProps) {
               <Bot className="h-5 w-5 mr-2 text-primary" /> {agent.name}
             </CardTitle>
             <CardDescription className="text-xs text-muted-foreground">Created {timeAgo}</CardDescription>
+             {agent.archetype && <Badge variant="outline" className="mt-1 text-xs">{agent.archetype}</Badge>}
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-4 pt-0 flex-grow">
-        <p className="text-sm text-muted-foreground line-clamp-3 overflow-hidden text-ellipsis" title={agent.persona}>
-          <strong>Persona:</strong> {agent.persona}
+      <CardContent className="p-4 pt-0 flex-grow space-y-2">
+        <p className="text-sm text-muted-foreground line-clamp-2" title={agent.persona}>
+          <strong><Brain className="inline h-3 w-3 mr-1"/>Persona:</strong> {agent.persona}
         </p>
+        {agent.backstory && (
+          <p className="text-xs text-muted-foreground line-clamp-2" title={agent.backstory}>
+            <strong><History className="inline h-3 w-3 mr-1"/>Backstory:</strong> {agent.backstory}
+          </p>
+        )}
+        {agent.languageStyle && (
+          <p className="text-xs text-muted-foreground line-clamp-2" title={agent.languageStyle}>
+            <strong><Palette className="inline h-3 w-3 mr-1"/>Style:</strong> {agent.languageStyle}
+          </p>
+        )}
       </CardContent>
       <CardFooter className="p-4 border-t flex justify-end items-center gap-2">
         {/* <Button variant="outline" size="sm" disabled>
-          <Edit3 className="mr-2 h-3 w-3" /> Edit
+          <Edit3 className="mr-2 h-3 w-3" /> Edit (Future Feature)
         </Button> */}
         <AlertDialog>
           <AlertDialogTrigger asChild>
