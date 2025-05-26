@@ -19,6 +19,7 @@ import {
   arrayUnion,
   limit,
   onSnapshot, // Added for real-time updates on pending requests if needed
+  or // Added 'or' import
 } from "firebase/firestore";
 import type { AppUserProfile, FriendRequest, NetworkJoinRequest } from "@/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -80,6 +81,7 @@ export default function FriendsPage() {
                 memberOfNetworks: [],
                 myNetworkMembers: []
               };
+              // @ts-ignore
               await setDoc(userProfileRef, { ...basicProfile, createdAt: serverTimestamp() });
               setCurrentUserProfile(convertAppUserProfileTimestamp(basicProfile));
           }
@@ -104,7 +106,7 @@ export default function FriendsPage() {
       const frQuery = query(
         collection(db, "friendRequests"),
         where("status", "==", "pending"),
-        or(
+        or( // This 'or' needs to be imported
           where("senderId", "==", user.uid),
           where("receiverId", "==", user.uid)
         )
@@ -410,5 +412,7 @@ export default function FriendsPage() {
     </div>
   );
 }
+
+    
 
     
