@@ -1,6 +1,6 @@
 "use client";
 
-import type { z } from "zod";
+import { z } from "zod"; // Added missing import
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import {
