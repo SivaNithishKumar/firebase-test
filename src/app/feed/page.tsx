@@ -67,11 +67,11 @@ export default function FeedPage() {
 
   const triggerAgentReactionsToNewPost = async (newPostId: string, postContent: string, postUserId: string) => {
     if (!postUserId) {
-      console.warn("triggerAgentReactionsToNewPost: postUserId is missing.");
+      console.warn("[AI Reaction Trigger] postUserId is missing. Cannot trigger AI reactions.");
       return;
     }
 
-    console.log(`Triggering agent reactions for new post ID: ${newPostId}`);
+    console.log(`[AI Reaction Trigger] For new post ID: ${newPostId}, User ID: ${postUserId}`);
     try {
       const agentsQuery = query(collection(db, "agents"), where("userId", "==", postUserId));
       const agentSnapshot = await getDocs(agentsQuery);
@@ -79,50 +79,63 @@ export default function FeedPage() {
       agentSnapshot.forEach(docSnap => agents.push({ id: docSnap.id, ...docSnap.data(), createdAt: convertTimestamp(docSnap.data().createdAt) } as Agent));
 
       if (agents.length === 0) {
-        console.log("No agents found for user to react to post.");
+        console.log("[AI Reaction Trigger] No agents found for user to react to post.");
         return;
       }
+      console.log(`[AI Reaction Trigger] Found ${agents.length} agent(s) for user ${postUserId}.`);
 
       const postRef = doc(db, "posts", newPostId);
 
       for (const agent of agents) {
-        console.log(`Processing reaction for agent: ${agent.name}`);
+        console.log(`[AI Reaction Trigger] Processing reaction for agent: ${agent.name} (ID: ${agent.id})`);
+        const reactionInput: IntelligentReactionInput = {
+          postContent: postContent,
+          agentPersona: agent.persona,
+        };
+        console.log(`[AI Reaction Trigger] Input for agent ${agent.name}:`, JSON.stringify(reactionInput));
+        
         try {
-          const reactionInput: IntelligentReactionInput = {
-            postContent: postContent,
-            agentPersona: agent.persona,
-          };
           const reactionOutput: IntelligentReactionOutput = await intelligentReaction(reactionInput);
+          console.log(`[AI Reaction Trigger] Output from agent ${agent.name}:`, JSON.stringify(reactionOutput));
 
-          if (reactionOutput.shouldReact && reactionOutput.reactionType) {
-            const newReactionData = { // Data to be stored
+          if (reactionOutput.shouldReact && reactionOutput.reactionType && reactionOutput.reactionType.trim() !== "") {
+            const newReactionData = { 
               agentId: agent.id,
               agentName: agent.name,
               type: reactionOutput.reactionType,
-              createdAt: serverTimestamp(), // Server-side timestamp
+              createdAt: serverTimestamp(), 
             };
-            const reactionForUnion = { // Object for arrayUnion, includes client-generated ID
+            // Create a client-side unique ID for the reaction object for React keys and arrayRemove operations
+            const reactionForUnion = { 
                 ...newReactionData,
-                id: `${agent.id}-${Date.now()}-${reactionOutput.reactionType}` // More unique client ID
+                id: `${agent.id}-${Date.now()}-${reactionOutput.reactionType}` 
             };
             
-            console.log(`Agent ${agent.name} attempting to add reaction:`, reactionForUnion);
+            console.log(`[AI Reaction Trigger] Agent ${agent.name} attempting to add reaction to Firestore:`, JSON.stringify(reactionForUnion));
             await updateDoc(postRef, {
               reactions: arrayUnion(reactionForUnion)
             });
-            console.log(`Agent ${agent.name} successfully added reaction.`);
+            console.log(`[AI Reaction Trigger] Agent ${agent.name} successfully added reaction to Firestore.`);
             toast({ title: "Agent Reaction", description: `${agent.name} reacted: ${reactionOutput.reactionType}` });
           } else {
-            console.log(`Agent ${agent.name} decided not to react or reactionType missing.`);
+            console.log(`[AI Reaction Trigger] Agent ${agent.name} decided not to react or reactionType missing/empty. ShouldReact: ${reactionOutput.shouldReact}, ReactionType: ${reactionOutput.reactionType}`);
           }
         } catch (aiError: any) {
-          console.error(`Error with agent ${agent.name} reacting to post ${newPostId}:`, aiError);
-          toast({ title: "AI Reaction Error", description: `Agent ${agent.name} failed to react. ${aiError.message || 'Unknown error'}`, variant: "destructive" });
+          console.error(`[AI Reaction Trigger] Error with agent ${agent.name} (ID: ${agent.id}) AI flow for post ${newPostId}:`, aiError);
+          toast({ 
+            title: "AI Reaction Error", 
+            description: `Agent ${agent.name} failed to process reaction. ${aiError.message || 'Unknown AI error'}`, 
+            variant: "destructive" 
+          });
         }
       }
     } catch (error: any) {
-      console.error(`Error fetching agents for reaction to post ${newPostId}:`, error);
-      toast({ title: "Agent Reaction Setup Error", description: `Fetching agents failed: ${error.message || 'Unknown error'}`, variant: "destructive" });
+      console.error(`[AI Reaction Trigger] Error fetching agents or setting up reactions for post ${newPostId}:`, error);
+      toast({ 
+        title: "Agent Reaction Setup Error", 
+        description: `Failed to process agent reactions. ${error.message || 'Unknown error'}`, 
+        variant: "destructive" 
+      });
     }
   };
 
@@ -144,11 +157,12 @@ export default function FeedPage() {
         reactions: [],
         comments: [],
       };
-      console.log("New post data:", newPostData);
+      console.log("New post data (before Firestore):", JSON.stringify(newPostData));
       const docRef = await addDoc(collection(db, "posts"), newPostData);
-      console.log("Post created successfully with ID:", docRef.id);
+      console.log("Post created successfully in Firestore with ID:", docRef.id);
       toast({ title: "Post Created!", description: "Your post is now live on the feed." });
       
+      // Call AI reactions after successful post creation
       await triggerAgentReactionsToNewPost(docRef.id, content, user.uid);
 
     } catch (error: any) {
@@ -157,7 +171,7 @@ export default function FeedPage() {
     }
   };
 
-  if (authLoading || (!user && !authLoading)) { // Show skeletons if auth is loading OR if not loading and no user (before redirect)
+  if (authLoading || (!user && !authLoading)) { 
     return (
       <div className="space-y-6">
         <Skeleton className="h-32 w-full rounded-lg" />
