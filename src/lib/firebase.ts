@@ -9,6 +9,7 @@ const PLACEHOLDER_PROJECT_ID = "YOUR_PROJECT_ID";
 const PLACEHOLDER_STORAGE_BUCKET = "YOUR_STORAGE_BUCKET";
 const PLACEHOLDER_MESSAGING_SENDER_ID = "YOUR_MESSAGING_SENDER_ID";
 const PLACEHOLDER_APP_ID = "YOUR_APP_ID";
+// measurementId is optional, so no placeholder constant for throwing error, but can be read from env.
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -18,6 +19,7 @@ const firebaseConfig = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || PLACEHOLDER_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || PLACEHOLDER_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || PLACEHOLDER_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || undefined, // Add measurementId
 };
 
 // Check if critical Firebase config values are still placeholders
@@ -39,6 +41,7 @@ if (
     "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_actual_storage_bucket\n" +
     "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_actual_messaging_sender_id\n" +
     "NEXT_PUBLIC_FIREBASE_APP_ID=your_actual_app_id\n" +
+    "(Optional) NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_actual_measurement_id\n" +
     "You can find these credentials in your Firebase project settings."
   );
 }
