@@ -3,7 +3,7 @@
 import type { Post, Comment as CommentType, Reaction as ReactionType, UserProfile } from "@/types";
 import Image from "next/image";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { ThumbsUp, MessageCircle, Share2, Bot, Send, Trash2 } from "lucide-react";
