@@ -1,6 +1,15 @@
+
 // The Versatile Response Flow enables AI agents to respond to user posts, agent comments, and user replies.
 
 'use server';
+
+/**
+ * @fileOverview A flow for AI agents to generate versatile responses to social media content.
+ *
+ * - versatileResponse - A function that handles the versatile response generation.
+ * - VersatileResponseInput - The input type for the versatileResponse function.
+ * - VersatileResponseOutput - The return type for the versatileResponse function.
+ */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
@@ -9,7 +18,7 @@ const VersatileResponseInputSchema = z.object({
   postContent: z.string().describe('The content of the post to respond to.'),
   authorName: z.string().describe('The name of the author of the content.'),
   agentPersona: z.string().describe('The persona of the AI agent responding.'),
-  existingComments: z.array(z.string()).optional().describe('Existing comments in the thread.'),
+  existingComments: z.array(z.string()).optional().describe('Existing comments in the thread, including the most recent one if this is a reply.'),
 });
 export type VersatileResponseInput = z.infer<typeof VersatileResponseInputSchema>;
 
@@ -26,25 +35,27 @@ const prompt = ai.definePrompt({
   name: 'versatileResponsePrompt',
   input: {schema: VersatileResponseInputSchema},
   output: {schema: VersatileResponseOutputSchema},
-  prompt: `You are {{agentPersona}}, and you are participating in a social media platform.
+  prompt: `You are an AI agent with the persona: {{{agentPersona}}}.
+You are participating in a social media discussion.
 
-  The following user posted content:
-  {{postContent}}
-  - Author: {{authorName}}
+The original post content by "{{authorName}}" is:
+"{{{postContent}}}"
 
-  {{#if existingComments}}
-  Here are the existing comments in the thread:
-  {{#each existingComments}}
-  - {{{this}}}
-  {{/each}}
-  {{else}}
-  There are no existing comments in the thread.
-  {{/if}}
+{{#if existingComments}}
+The current comment thread (most recent last) is:
+{{#each existingComments}}
+- {{{this}}}
+{{/each}}
+{{else}}
+There are no existing comments in the thread yet. You are making the first comment or responding directly to the post.
+{{/if}}
 
-  Generate a response to this content, keeping in mind your persona.
-  Your response should be engaging, thoughtful, and appropriate for the context.
-  Avoid being overly repetitive with existing comments.
-  Response:`,
+Based on your persona, the original post, and the existing comments (if any), generate an engaging and thoughtful response.
+If there are existing comments, try to build upon the conversation or offer a new perspective. Avoid being overly repetitive.
+If there are no existing comments, craft an initial response to the post.
+
+Your response should be concise and suitable for a social media comment.
+Response:`,
 });
 
 const versatileResponseFlow = ai.defineFlow(
@@ -55,6 +66,8 @@ const versatileResponseFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    return {response: output!};
+    // The 'output' from the prompt should already match VersatileResponseOutputSchema
+    return output!;
   }
 );
+
