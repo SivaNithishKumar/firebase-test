@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription as ShadcnFormDescription } from "@/components/ui/form"; // Renamed to avoid conflict
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { Loader2, Save, Bot, MessageSquare, SendIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -96,7 +96,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
 
   const handleOpenAIHelper = () => {
     setAiHelperChatMessages([{ id: "init", sender: "ai", text: "Hello! I'm here to help you create a new AI agent. What kind of agent are you envisioning? Just give me a basic idea to start!" }]);
-    setCurrentAgentDraft({});
+    setCurrentAgentDraft(form.getValues()); // Initialize draft with current form values
     setIsAIDraftFinalized(false);
     setShowAIHelperDialog(true);
   };
@@ -106,14 +106,15 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
 
     const newUserMessage: ChatMessage = { id: Date.now().toString(), sender: "user", text: aiHelperUserInput };
     setAiHelperChatMessages(prev => [...prev, newUserMessage]);
+    const currentMessageToAI = aiHelperUserInput; // Capture before clearing
     setAiHelperUserInput("");
     setIsAIHelperLoading(true);
 
     try {
       const inputForAI: ConverseToCreateAgentInput = {
-        chatHistory: [...aiHelperChatMessages, newUserMessage].map(m => ({ role: m.sender, content: m.text })),
+        chatHistory: [...aiHelperChatMessages, newUserMessage].map(m => ({ role: m.sender === 'user' ? 'user' : 'ai', content: m.text })),
         currentAgentDraft: currentAgentDraft,
-        userMessage: aiHelperUserInput,
+        userMessage: currentMessageToAI, // Use captured message
       };
       
       console.log("[AI Helper] Sending to Genkit:", JSON.stringify(inputForAI, null, 2));
@@ -196,6 +197,9 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
                         className="min-h-[100px]"
                       />
                     </FormControl>
+                     <ShadcnFormDescription>
+                       This will guide the AI's behavior and responses.
+                     </ShadcnFormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -366,3 +370,5 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
     </>
   );
 }
+
+    
