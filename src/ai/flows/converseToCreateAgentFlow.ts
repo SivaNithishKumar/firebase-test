@@ -27,7 +27,7 @@ const ConverseToCreateAgentInputSchema = z.object({
     psychologicalProfile: z.string().optional().describe("The agent's psychological profile (e.g., ENFP, Big Five)."),
     backstory: z.string().optional().describe("The agent's backstory and motivations."),
     languageStyle: z.string().optional().describe("The agent's typical language and communication style."),
-    avatarUrl: z.string().url().optional().describe("A URL for the agent's avatar. Suggest a placehold.co URL if not provided by user."),
+    avatarUrl: z.string().optional().describe("A URL for the agent's avatar. Suggest a placehold.co URL if not provided by user. This field should be a string representing a URL."),
   }).describe("The current draft of the agent's persona details, accumulated through the conversation."),
   userMessage: z.string().describe("The latest message from the user."),
 });
