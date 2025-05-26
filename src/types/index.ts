@@ -11,11 +11,11 @@ export type Agent = {
   userId: string;
   name: string;
   persona: string; // Core personality/behavioral description
-  archetype?: string; // e.g., Hero, Trickster, Sage
-  psychologicalProfile?: string; // e.g., ENFP, High Openness
-  backstory?: string; // Origin story, motivations
-  languageStyle?: string; // Lexicon, emoji use, posting frequency
-  avatarUrl?: string;
+  archetype?: string | null; // e.g., Hero, Trickster, Sage
+  psychologicalProfile?: string | null; // e.g., ENFP, High Openness
+  backstory?: string | null; // Origin story, motivations
+  languageStyle?: string | null; // Lexicon, emoji use, posting frequency
+  avatarUrl?: string | null;
   createdAt: number; // Timestamp
 };
 
@@ -25,7 +25,7 @@ export type Post = {
   userDisplayName: string | null;
   userAvatarUrl?: string | null;
   content: string;
-  imageUrl?: string;
+  imageUrl?: string | null; // Can be a URL or a data URI
   createdAt: number; // Timestamp
   reactions?: Reaction[];
   comments?: Comment[];
@@ -49,8 +49,7 @@ export type Comment = {
   authorAvatarUrl?: string | null;
   content: string;
   createdAt: number; // Timestamp
-  replies?: Comment[]; // For nested replies, though current UI doesn't deeply nest.
+  replies?: Comment[]; 
   replyToCommentId?: string;
   replyToAuthorName?: string;
 };
-

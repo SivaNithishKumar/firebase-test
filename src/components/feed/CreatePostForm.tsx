@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -13,11 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ImagePlus, Send } from "lucide-react";
+import { Loader2, ImagePlus, Send, XCircle } from "lucide-react";
+import Image from "next/image";
 
 const postSchema = z.object({
   content: z.string().min(1, "Post content cannot be empty.").max(500, "Post content is too long."),
-  imageUrl: z.string().url("Invalid image URL.").optional().or(z.literal("")),
+  // imageUrl will now store a data URI if an image is uploaded
+  imageUrl: z.string().optional().or(z.literal("")),
 });
 
 type PostFormData = z.infer<typeof postSchema>;
@@ -29,7 +31,9 @@ interface CreatePostFormProps {
 export function CreatePostForm({ onPostCreated }: CreatePostFormProps) {
   const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showImageUrlInput, setShowImageUrlInput] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const form = useForm<PostFormData>({
@@ -40,37 +44,71 @@ export function CreatePostForm({ onPostCreated }: CreatePostFormProps) {
     },
   });
 
-  // Changed from async to sync for quicker UI feedback
-  const onSubmit: SubmitHandler<PostFormData> = (data) => {
-    setIsSubmitting(true); // Show spinner
+  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        setImagePreview(result);
+        form.setValue("imageUrl", result); // Store data URI in form
+      };
+      reader.onerror = () => {
+        toast({
+          title: "Image Read Error",
+          description: "Could not read the selected image file.",
+          variant: "destructive",
+        });
+        setImagePreview(null);
+        setImageFile(null);
+        form.setValue("imageUrl", "");
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+      }
+      reader.readAsDataURL(file);
+    } else {
+      setImagePreview(null);
+      setImageFile(null);
+      form.setValue("imageUrl", "");
+    }
+  };
 
-    // Initiate post creation but don't wait for its full completion here
-    // to make the UI responsive faster.
-    // onPostCreated will handle its own toasts for actual success/failure.
+  const removeImage = () => {
+    setImagePreview(null);
+    setImageFile(null);
+    form.setValue("imageUrl", "");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""; // Reset the file input
+    }
+  };
+
+  const onSubmit: SubmitHandler<PostFormData> = (data) => {
+    setIsSubmitting(true);
+    // PRODUCTION NOTE: For a production app, instead of sending a potentially large data URI,
+    // you would typically upload the imageFile to a service like Firebase Storage,
+    // get back a public URL, and then pass that URL to onPostCreated.
+    // For this prototype, we'll use the data.imageUrl (which is the data URI).
+
+    // The imageUrl from form (data.imageUrl) is already the data URI
     onPostCreated(data.content, data.imageUrl || undefined)
       .catch((error) => {
-        // Errors should be handled within onPostCreated and shown via its toasts.
-        // This catch is a fallback if onPostCreated itself throws before its internal try/catch.
         console.error("Error during post submission process:", error);
-        // Avoid duplicate error toasts if onPostCreated already showed one.
-        // toast({ title: "Submission Error", description: "Could not send post.", variant: "destructive" });
       })
       .finally(() => {
-        // This block ensures isSubmitting is false IF we decide to await again.
-        // For now, setIsSubmitting(false) is called immediately after initiating.
+        // This will be called after onPostCreated finishes (success or fail)
+        // However, we want the UI to feel responsive faster.
       });
 
-    // Show an immediate toast that submission has started
     toast({
       title: "Submitting Post",
       description: "Your post is being sent...",
     });
     
-    // Reset form and UI state immediately after *initiating* the post.
-    // The actual success/failure toast will come from onPostCreated.
     form.reset();
-    setShowImageUrlInput(false);
-    setIsSubmitting(false); // Hide spinner quickly
+    removeImage(); // Clear image preview and file state
+    setIsSubmitting(false);
   };
 
   if (!user) return null;
@@ -101,32 +139,39 @@ export function CreatePostForm({ onPostCreated }: CreatePostFormProps) {
                 </FormItem>
               )}
             />
-            {showImageUrlInput && (
-              <FormField
-                control={form.control}
-                name="imageUrl"
-                render={({ field }) => (
-                  <FormItem>
-                    <Label htmlFor="imageUrl">Image URL (Optional)</Label>
-                    <FormControl>
-                      <Input id="imageUrl" placeholder="https://example.com/image.png" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            
+            <FormItem>
+              <Label htmlFor="imageUpload">Add Image (Optional)</Label>
+              <FormControl>
+                <Input 
+                  id="imageUpload" 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleImageChange}
+                  ref={fileInputRef} 
+                  className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                />
+              </FormControl>
+              <FormMessage>{form.formState.errors.imageUrl?.message}</FormMessage>
+            </FormItem>
+
+            {imagePreview && (
+              <div className="mt-2 relative group w-48 h-48 border rounded-md overflow-hidden">
+                <Image src={imagePreview} alt="Selected image preview" layout="fill" objectFit="cover" />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon"
+                  className="absolute top-1 right-1 h-6 w-6 opacity-70 group-hover:opacity-100"
+                  onClick={removeImage}
+                  aria-label="Remove image"
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </div>
             )}
           </CardContent>
-          <CardFooter className="flex justify-between items-center">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowImageUrlInput(!showImageUrlInput)}
-              aria-label={showImageUrlInput ? "Hide image URL input" : "Add image URL"}
-            >
-              <ImagePlus className="h-5 w-5" />
-            </Button>
+          <CardFooter className="flex justify-end items-center">
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

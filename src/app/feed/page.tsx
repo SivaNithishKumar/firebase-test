@@ -57,7 +57,7 @@ export default function FeedPage() {
         setPosts(postsData);
         setLoadingPosts(false);
       }, (error) => {
-        console.error("Error fetching posts with onSnapshot:", error);
+        console.error("[FeedPage] Error fetching posts with onSnapshot:", error);
         toast({ title: "Error fetching posts", description: `Snapshot error: ${error.message}`, variant: "destructive" });
         setLoadingPosts(false);
       });
@@ -65,7 +65,7 @@ export default function FeedPage() {
     }
   }, [user, toast]);
 
-  const triggerAgentEngagementWithNewPost = async (newPostId: string, postContent: string, postImageUrl: string | undefined, postUserId: string, postAuthorDisplayName: string) => {
+  const triggerAgentEngagementWithNewPost = async (newPostId: string, postContent: string, postImageUrl: string | undefined | null, postUserId: string, postAuthorDisplayName: string) => {
     if (!postUserId) {
       console.warn("[AI Engagement Trigger] postUserId is missing. Cannot trigger AI engagement.");
       return;
@@ -96,18 +96,18 @@ export default function FeedPage() {
           agentPsychologicalProfile: agent.psychologicalProfile,
           agentBackstory: agent.backstory,
           agentLanguageStyle: agent.languageStyle,
-          agentMemorySummary: "No specific memory for this new post yet.", // Simplified memory
+          agentMemorySummary: "No specific memory for this new post yet.",
           postContent: postContent,
-          postImageUrl: postImageUrl,
+          postImageUrl: postImageUrl, // Can be string, undefined, or null
           postAuthorName: postAuthorDisplayName,
-          existingComments: [], // No comments on a brand new post for initial engagement
+          existingComments: [], 
           isReplyContext: false,
         };
-        console.log(`[AI Engagement Trigger] Input for agent ${agent.name}:`, JSON.stringify(decisionInput));
+        console.log(`[AI Engagement Trigger] Input for agent ${agent.name} (agentDecisionFlow):`, JSON.stringify(decisionInput, null, 2));
 
         try {
           const decisionOutput: AgentDecisionOutput = await agentDecision(decisionInput);
-          console.log(`[AI Engagement Trigger] Output from agent ${agent.name}:`, JSON.stringify(decisionOutput));
+          console.log(`[AI Engagement Trigger] Output from agent ${agent.name} (agentDecisionFlow):`, JSON.stringify(decisionOutput, null, 2));
 
           // TODO: Persist decisionOutput.updatedMemorySummary for the agent
 
@@ -116,6 +116,8 @@ export default function FeedPage() {
             continue;
           }
 
+          let firestoreUpdates: Record<string, any> = {};
+
           // Handle Reaction
           if (decisionOutput.decision === "REACT_ONLY" || decisionOutput.decision === "REACT_AND_COMMENT") {
             if (decisionOutput.reactionType && decisionOutput.reactionType.trim() !== "") {
@@ -123,14 +125,14 @@ export default function FeedPage() {
                 agentId: agent.id,
                 agentName: agent.name,
                 type: decisionOutput.reactionType,
-                createdAt: Date.now(), // Client-side timestamp for arrayUnion
+                createdAt: Date.now(), 
                 id: `${agent.id}-${Date.now()}-reaction-${Math.random().toString(36).substring(2, 9)}`,
+                 // message field is optional, only add if present
+                ...(decisionOutput.message && decisionOutput.message.trim() !== "" && { message: decisionOutput.message.trim() }),
               };
               
-              console.log(`[AI Engagement Trigger] Agent ${agent.name} attempting to add reaction to Firestore:`, JSON.stringify(reactionDataPayload));
-              await updateDoc(postRef, { reactions: arrayUnion(reactionDataPayload) });
-              console.log(`[AI Engagement Trigger] Agent ${agent.name} successfully added reaction to Firestore.`);
-              toast({ title: "Agent Reaction", description: `${agent.name} reacted: ${decisionOutput.reactionType}` });
+              console.log(`[AI Engagement Trigger] Agent ${agent.name} reaction payload for Firestore:`, JSON.stringify(reactionDataPayload));
+              firestoreUpdates.reactions = arrayUnion(reactionDataPayload);
             } else {
                console.log(`[AI Engagement Trigger] Agent ${agent.name} decided to react, but reactionType is missing/empty. Skipping reaction part.`);
             }
@@ -145,18 +147,25 @@ export default function FeedPage() {
                 authorName: agent.name,
                 authorAvatarUrl: agent.avatarUrl || `https://placehold.co/40x40/A9A9A9/000000.png?text=${agent.name.substring(0,2).toUpperCase()}`,
                 content: decisionOutput.commentText,
-                createdAt: Date.now(), // Client-side timestamp for arrayUnion
+                createdAt: Date.now(), 
                 id: `${agent.id}-comment-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
               };
 
-              console.log(`[AI Engagement Trigger] Agent ${agent.name} attempting to add comment to Firestore:`, JSON.stringify(agentCommentData));
-              await updateDoc(postRef, { comments: arrayUnion(agentCommentData) });
-              console.log(`[AI Engagement Trigger] Agent ${agent.name} successfully added comment to Firestore.`);
-              toast({ title: "Agent Commented", description: `${agent.name} added a comment.` });
+              console.log(`[AI Engagement Trigger] Agent ${agent.name} comment payload for Firestore:`, JSON.stringify(agentCommentData));
+              firestoreUpdates.comments = arrayUnion(agentCommentData);
             } else {
               console.log(`[AI Engagement Trigger] Agent ${agent.name} decided to comment, but commentText is missing/empty. Skipping comment part.`);
             }
           }
+
+          if (Object.keys(firestoreUpdates).length > 0) {
+            console.log(`[AI Engagement Trigger] Agent ${agent.name} attempting to update Firestore with:`, firestoreUpdates);
+            await updateDoc(postRef, firestoreUpdates);
+            console.log(`[AI Engagement Trigger] Agent ${agent.name} successfully updated Firestore.`);
+            if (firestoreUpdates.reactions) toast({ title: "Agent Reaction", description: `${agent.name} reacted: ${decisionOutput.reactionType}` });
+            if (firestoreUpdates.comments) toast({ title: "Agent Commented", description: `${agent.name} added a comment.` });
+          }
+
         } catch (aiError: any) {
           console.error(`[AI Engagement Trigger] Error with agent ${agent.name} (ID: ${agent.id}) AI flow for post ${newPostId}:`, aiError);
           toast({
@@ -182,27 +191,27 @@ export default function FeedPage() {
       toast({ title: "Authentication Error", description: "You must be logged in to post.", variant: "destructive" });
       return;
     }
-    console.log("Attempting to create post by user:", user.uid);
+    console.log("[FeedPage] Attempting to create post by user:", user.uid);
     try {
       const newPostData = {
         userId: user.uid,
         userDisplayName: user.displayName || "Anonymous User",
         userAvatarUrl: user.photoURL || null,
         content,
-        imageUrl: imageUrl || null,
-        createdAt: serverTimestamp(), // Server timestamp for the main post
+        imageUrl: imageUrl || null, // This can now be a data URI or a regular URL
+        createdAt: serverTimestamp(),
         reactions: [],
         comments: [],
       };
-      console.log("New post data (before Firestore):", JSON.stringify(newPostData, null, 2));
+      console.log("[FeedPage] New post data (before Firestore):", JSON.stringify(newPostData, null, 2));
       const docRef = await addDoc(collection(db, "posts"), newPostData);
-      console.log("Post created successfully in Firestore with ID:", docRef.id);
+      console.log("[FeedPage] Post created successfully in Firestore with ID:", docRef.id);
       toast({ title: "Post Created!", description: "Your post is now live on the feed." });
 
       await triggerAgentEngagementWithNewPost(docRef.id, content, imageUrl, user.uid, user.displayName || "Anonymous User");
 
     } catch (error: any) {
-      console.error("Error creating post in Firestore:", error);
+      console.error("[FeedPage] Error creating post in Firestore:", error);
       toast({ title: "Error Creating Post", description: `Firestore error: ${error.message || 'Unknown error'}`, variant: "destructive" });
     }
   };
