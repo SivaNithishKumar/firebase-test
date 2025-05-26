@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogIn, LogOut, UserPlus, Users, MessageSquare, Bot, UserCircle as UserIcon, UserSearch, Users2 } from "lucide-react"; // Added Users2 for Friends
+import { LogIn, LogOut, UserPlus, Users, MessageSquare, Bot, UserCircle as UserIcon, Users2, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -27,12 +27,11 @@ export default function Header() {
       router.push("/login");
     } catch (error) {
       console.error("Error signing out:", error);
-      // Handle sign-out error, e.g., show a toast notification
     }
   };
 
   const getInitials = (name?: string | null) => {
-    if (!name) return "PN"; // PersonaNet initials
+    if (!name) return "PN";
     return name
       .split(" ")
       .map((n) => n[0])
@@ -49,7 +48,7 @@ export default function Header() {
             PersonaNet
           </span>
         </Link>
-        <nav className="flex items-center gap-2 sm:gap-4">
+        <nav className="flex items-center gap-1 sm:gap-2">
           {user && (
             <>
               <Button variant="ghost" asChild className="hidden sm:inline-flex">
@@ -64,8 +63,14 @@ export default function Header() {
               </Button>
               <Button variant="ghost" asChild className="hidden sm:inline-flex">
                 <Link href="/friends">
-                  <Users2 className="mr-2 h-4 w-4" /> Friends 
+                  <Users2 className="mr-2 h-4 w-4" /> Friends
                 </Link>
+              </Button>
+               <Button variant="ghost" size="icon" asChild title="Notifications / Profile" onClick={() => router.push('/profile')}>
+                 <Link href="/profile">
+                    <Bell className="h-5 w-5" />
+                    <span className="sr-only">Notifications</span>
+                 </Link>
               </Button>
             </>
           )}
@@ -135,6 +140,3 @@ export default function Header() {
     </header>
   );
 }
-    
-
-    

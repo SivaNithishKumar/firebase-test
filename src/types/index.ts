@@ -14,26 +14,28 @@ export type AppUserProfile = {
   photoURL?: string | null;
   createdAt: number; // Timestamp
   friends?: string[]; // Array of friend UIDs
-  // Future: could add ownedNetworkIds: string[] if a user can have multiple networks
+
+  // Network feature fields
+  memberOfNetworks?: string[]; // IDs of networks this user has joined (networkId is typically owner's UID)
+  myNetworkMembers?: string[]; // UserIDs of members who have joined this user's network
 };
 
 export type Agent = {
   id: string;
   userId: string; // The user who owns this agent
-  // Future: could add networkIds: string[] if agents can belong to multiple networks
   name: string;
-  persona: string; // Core personality/behavioral description
-  archetype?: string | null; // e.g., Hero, Trickster, Sage
-  psychologicalProfile?: string | null; // e.g., ENFP, High Openness
-  backstory?: string | null; // Origin story, motivations
-  languageStyle?: string | null; // Lexicon, emoji use, posting frequency
+  persona: string;
+  archetype?: string | null;
+  psychologicalProfile?: string | null;
+  backstory?: string | null;
+  languageStyle?: string | null;
   avatarUrl?: string | null;
   createdAt: number; // Timestamp
 };
 
 export type Post = {
   id: string;
-  userId: string; // The user who created the post
+  userId: string; // The user who created the post (and owns the network it's in)
   userDisplayName: string | null;
   userAvatarUrl?: string | null;
   networkId: string; // The ID of the network this post belongs to (typically owner's UID)
@@ -46,55 +48,48 @@ export type Post = {
 
 export type Reaction = {
   id: string;
-  agentId: string; // Agent performing the reaction
+  agentId: string;
   agentName: string;
-  // userId?: string; // If users can also react directly in the future
-  type: 'like' | 'celebrate' | 'insightful' | 'curious' | 'love' | 'haha' | 'wow' | 'sad' | 'angry' | 'support' | string; // Allow for new types
-  message?: string; // Optional message for the reaction
+  type: 'like' | 'celebrate' | 'insightful' | 'curious' | 'love' | 'haha' | 'wow' | 'sad' | 'angry' | 'support' | string;
+  message?: string;
   createdAt: number; // Timestamp
 };
 
 export type Comment = {
   id: string;
   postId: string;
-  userId?: string; // If comment by a user
-  agentId?: string; // If comment by an agent
-  authorName: string; // Display name of user or agent
+  userId?: string;
+  agentId?: string;
+  authorName: string;
   authorAvatarUrl?: string | null;
   content: string;
   createdAt: number; // Timestamp
-  replies?: Comment[]; // Kept for potential future use, though direct replies might be flat for now
   replyToCommentId?: string;
   replyToAuthorName?: string;
-  // networkId might be useful here if comments need cross-network visibility checks, but for now, tied to post's network
 };
 
 export type FriendRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
 
 export type FriendRequest = {
-  id: string; // Firestore document ID
+  id: string;
   senderId: string;
   senderDisplayName: string | null;
   senderPhotoURL?: string | null;
   receiverId: string;
   status: FriendRequestStatus;
+  createdAt: number;
+  updatedAt?: number;
+};
+
+export type NetworkJoinRequestStatus = 'pending' | 'accepted' | 'declined';
+
+export type NetworkJoinRequest = {
+  id: string; // Firestore document ID
+  senderId: string; // User requesting to join
+  senderDisplayName: string | null;
+  senderPhotoURL?: string | null;
+  networkOwnerId: string; // Owner of the network being requested
+  status: NetworkJoinRequestStatus;
   createdAt: number; // Timestamp
   updatedAt?: number; // Timestamp
 };
-
-// Future types for network joining:
-// export type NetworkJoinRequest = {
-//   id: string;
-//   senderId: string; // User requesting to join
-//   networkOwnerId: string; // Owner of the network being requested
-//   status: 'pending' | 'accepted' | 'declined';
-//   createdAt: number;
-//   updatedAt?: number;
-// };
-
-// export type NetworkMember = {
-//   userId: string; // ID of the member
-//   networkId: string; // ID of the network they are a member of
-//   joinedAt: number; // Timestamp of when they joined
-//   // permissions?: 'viewer' | 'interactor'; // Future: different levels of access
-// };

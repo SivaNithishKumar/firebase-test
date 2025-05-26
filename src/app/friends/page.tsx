@@ -19,14 +19,14 @@ import {
   arrayUnion,
   limit,
 } from "firebase/firestore";
-import type { AppUserProfile, FriendRequest } from "@/types";
+import type { AppUserProfile, FriendRequest, NetworkJoinRequest } from "@/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, CheckCircle, Clock, Loader2, Users as FriendsIcon, Search } from "lucide-react"; // Changed icon
+import { UserPlus, CheckCircle, Clock, Loader2, Users as FriendsIcon, Search, UserRoundPlus, Network } from "lucide-react";
 
 const convertAppUserProfileTimestamp = (profile: any): AppUserProfile => {
     return {
@@ -35,15 +35,17 @@ const convertAppUserProfileTimestamp = (profile: any): AppUserProfile => {
     } as AppUserProfile;
 };
 
-export default function FriendsPage() { // Renamed component
+export default function FriendsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const [allUsers, setAllUsers] = useState<AppUserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [currentUserProfile, setCurrentUserProfile] = useState<AppUserProfile | null>(null);
-  const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
+  const [pendingFriendRequests, setPendingFriendRequests] = useState<FriendRequest[]>([]);
+  const [pendingNetworkRequests, setPendingNetworkRequests] = useState<NetworkJoinRequest[]>([]);
   const [requestStatus, setRequestStatus] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
+  const [networkRequestStatus, setNetworkRequestStatus] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export default function FriendsPage() { // Renamed component
 
   useEffect(() => {
     if (user) {
-      const fetchUsersAndProfile = async () => {
+      const fetchUsersAndData = async () => {
         setLoadingUsers(true);
         try {
           const userProfileRef = doc(db, "userProfiles", user.uid);
@@ -66,29 +68,28 @@ export default function FriendsPage() { // Renamed component
           const usersQuery = query(collection(db, "userProfiles"), where("uid", "!=", user.uid), limit(50));
           const usersSnapshot = await getDocs(usersQuery);
           const usersData = usersSnapshot.docs.map(docSnap => convertAppUserProfileTimestamp(docSnap.data()));
-          console.log("Fetched users data count:", usersData.length); // Debug log
+          console.log("Fetched users data count:", usersData.length);
           setAllUsers(usersData);
 
-          const outgoingRequestsQuery = query(
-            collection(db, "friendRequests"),
-            where("senderId", "==", user.uid),
-            where("status", "==", "pending")
-          );
-          const incomingRequestsQuery = query(
-            collection(db, "friendRequests"),
-            where("receiverId", "==", user.uid),
-            where("status", "==", "pending")
-          );
-          
-          const [outgoingSnapshot, incomingSnapshot] = await Promise.all([
-            getDocs(outgoingRequestsQuery),
-            getDocs(incomingRequestsQuery)
-          ]);
+          // Fetch pending friend requests (both outgoing and incoming)
+          const outgoingFriendRequestsQuery = query(collection(db, "friendRequests"), where("senderId", "==", user.uid), where("status", "==", "pending"));
+          const incomingFriendRequestsQuery = query(collection(db, "friendRequests"), where("receiverId", "==", user.uid), where("status", "==", "pending"));
+          const [outgoingFriendSnap, incomingFriendSnap] = await Promise.all([getDocs(outgoingFriendRequestsQuery), getDocs(incomingFriendRequestsQuery)]);
+          const allPendingFriendRequests: FriendRequest[] = [];
+          outgoingFriendSnap.forEach(docSnap => allPendingFriendRequests.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
+          incomingFriendSnap.forEach(docSnap => { // Avoid adding duplicates if a request is both incoming and outgoing (shouldn't happen)
+            if (!allPendingFriendRequests.find(req => req.id === docSnap.id)) {
+              allPendingFriendRequests.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest);
+            }
+          });
+          setPendingFriendRequests(allPendingFriendRequests);
 
-          const allPendingRequestsData: FriendRequest[] = [];
-          outgoingSnapshot.forEach(docSnap => allPendingRequestsData.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
-          incomingSnapshot.forEach(docSnap => allPendingRequestsData.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
-          setPendingRequests(allPendingRequestsData);
+          // Fetch pending network join requests sent by the current user
+          const outgoingNetworkRequestsQuery = query(collection(db, "networkJoinRequests"), where("senderId", "==", user.uid), where("status", "==", "pending"));
+          const outgoingNetworkSnap = await getDocs(outgoingNetworkRequestsQuery);
+          const pendingNetworkReqsData: NetworkJoinRequest[] = [];
+          outgoingNetworkSnap.forEach(docSnap => pendingNetworkReqsData.push({ id: docSnap.id, ...docSnap.data() } as NetworkJoinRequest));
+          setPendingNetworkRequests(pendingNetworkReqsData);
 
         } catch (error: any) {
           console.error("Error fetching users or profile:", error);
@@ -97,7 +98,7 @@ export default function FriendsPage() { // Renamed component
             setLoadingUsers(false);
         }
       };
-      fetchUsersAndProfile();
+      fetchUsersAndData();
     }
   }, [user, toast]);
 
@@ -105,7 +106,7 @@ export default function FriendsPage() { // Renamed component
     if (!searchTerm) {
       return allUsers;
     }
-    return allUsers.filter(u => 
+    return allUsers.filter(u =>
       u.displayName?.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [allUsers, searchTerm]);
@@ -117,32 +118,16 @@ export default function FriendsPage() { // Renamed component
 
   const handleSendFriendRequest = async (targetUser: AppUserProfile) => {
     if (!user || !currentUserProfile) return;
-
     setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sending' }));
-
     try {
-      const existingRequestQuery1 = query(collection(db, "friendRequests"), 
-        where("senderId", "==", user.uid), 
-        where("receiverId", "==", targetUser.uid));
-      const existingRequestQuery2 = query(collection(db, "friendRequests"), 
-        where("senderId", "==", targetUser.uid), 
-        where("receiverId", "==", user.uid));
-
-      const [snap1, snap2] = await Promise.all([getDocs(existingRequestQuery1), getDocs(existingRequestQuery2)]);
-      
-      if (!snap1.empty || !snap2.empty) {
+      // Simplified check: if any request exists between these two users, consider it handled for now
+      const existingRequestQuery = query(collection(db, "friendRequests"),
+        where("senderId", "in", [user.uid, targetUser.uid]),
+        where("receiverId", "in", [user.uid, targetUser.uid]));
+      const existingSnap = await getDocs(existingRequestQuery);
+      if (!existingSnap.empty) {
          toast({ title: "Request Exists", description: "A friend request already exists or was handled.", variant: "default" });
          setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
-         const existingReqDoc = snap1.docs[0] || snap2.docs[0];
-         if (existingReqDoc) {
-            const existingReqData = existingReqDoc.data() as Omit<FriendRequest, "id">;
-             setPendingRequests(prev => [...prev.filter(r => !(r.senderId === user.uid && r.receiverId === targetUser.uid) && !(r.senderId === targetUser.uid && r.receiverId === user.uid) ), { 
-                id: existingReqDoc.id, 
-                ...existingReqData,
-                createdAt: existingReqData.createdAt || Date.now(), // Ensure createdAt is a number
-                updatedAt: existingReqData.updatedAt || Date.now()  // Ensure updatedAt is a number
-              }]);
-         }
          return;
       }
       if (currentUserProfile.friends?.includes(targetUser.uid)) {
@@ -153,19 +138,14 @@ export default function FriendsPage() { // Renamed component
       const newRequest: Omit<FriendRequest, "id"> = {
         senderId: user.uid,
         senderDisplayName: currentUserProfile.displayName,
-        senderPhotoURL: currentUserProfile.photoURL || null, // Ensure null instead of undefined
+        senderPhotoURL: currentUserProfile.photoURL || null,
         receiverId: targetUser.uid,
         status: "pending",
-        createdAt: Date.now(), 
+        createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      const requestRef = await addDoc(collection(db, "friendRequests"), {
-        ...newRequest,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      
-      setPendingRequests(prev => [...prev, {id: requestRef.id, ...newRequest}]);
+      const requestRef = await addDoc(collection(db, "friendRequests"), { ...newRequest, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      setPendingFriendRequests(prev => [...prev, {id: requestRef.id, ...newRequest}]);
       setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
       toast({ title: "Friend Request Sent", description: `Request sent to ${targetUser.displayName}.` });
     } catch (error: any) {
@@ -175,40 +155,83 @@ export default function FriendsPage() { // Renamed component
     }
   };
 
-  const getButtonState = (targetUserId: string) => {
-    if (currentUserProfile?.friends?.includes(targetUserId)) {
-      return { text: "Already Friends", disabled: true, icon: <CheckCircle className="mr-2" /> };
+  const handleRequestToJoinNetwork = async (targetUser: AppUserProfile) => {
+    if (!user || !currentUserProfile) return;
+    setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sending' }));
+    try {
+        // Check if already a member or if a request is pending
+        if (currentUserProfile.memberOfNetworks?.includes(targetUser.uid)) {
+            toast({ title: "Already a Member", description: `You are already a member of ${targetUser.displayName}'s network.`, variant: "default" });
+            setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
+            return;
+        }
+        const existingRequestQuery = query(collection(db, "networkJoinRequests"),
+            where("senderId", "==", user.uid),
+            where("networkOwnerId", "==", targetUser.uid),
+            where("status", "==", "pending"));
+        const existingSnap = await getDocs(existingRequestQuery);
+        if (!existingSnap.empty) {
+            toast({ title: "Request Already Sent", description: `A request to join ${targetUser.displayName}'s network is already pending.`, variant: "default" });
+            setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
+            return;
+        }
+
+        const newRequest: Omit<NetworkJoinRequest, "id"> = {
+            senderId: user.uid,
+            senderDisplayName: currentUserProfile.displayName,
+            senderPhotoURL: currentUserProfile.photoURL || null,
+            networkOwnerId: targetUser.uid, // targetUser is the owner of the network
+            status: "pending",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        };
+        const requestRef = await addDoc(collection(db, "networkJoinRequests"), { ...newRequest, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        setPendingNetworkRequests(prev => [...prev, { id: requestRef.id, ...newRequest }]);
+        setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
+        toast({ title: "Network Join Request Sent", description: `Request sent to join ${targetUser.displayName}'s network.` });
+    } catch (error: any) {
+        console.error("Error sending network join request:", error);
+        setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'error' }));
+        toast({ title: "Error", description: `Could not send join request: ${error.message}`, variant: "destructive" });
     }
-    const outgoingPending = pendingRequests.find(
-      (req) => req.senderId === user?.uid && req.receiverId === targetUserId && req.status === "pending"
-    );
-    if (outgoingPending) {
-      return { text: "Request Sent", disabled: true, icon: <Clock className="mr-2" /> };
-    }
-    const incomingPending = pendingRequests.find(
-      (req) => req.senderId === targetUserId && req.receiverId === user?.uid && req.status === "pending"
-    );
-    if (incomingPending) {
-      return { text: "Respond to Request", disabled: false, action: () => router.push('/profile'), icon: <UserPlus className="mr-2" /> };
-    }
-    if (requestStatus[targetUserId] === 'sending') {
-        return { text: "Sending...", disabled: true, icon: <Loader2 className="mr-2 animate-spin" /> };
-    }
-    return { text: "Send Friend Request", disabled: false, icon: <UserPlus className="mr-2" /> };
   };
 
-  if (authLoading || (!user && !authLoading)) {
+
+  const getFriendButtonState = (targetUserId: string) => {
+    if (currentUserProfile?.friends?.includes(targetUserId)) {
+      return { text: "Friends", disabled: true, icon: <CheckCircle className="mr-2" />, variant: "outline" as const };
+    }
+    const outgoingPending = pendingFriendRequests.find(req => req.senderId === user?.uid && req.receiverId === targetUserId && req.status === "pending");
+    if (outgoingPending) {
+      return { text: "Request Sent", disabled: true, icon: <Clock className="mr-2" />, variant: "outline" as const };
+    }
+    const incomingPending = pendingFriendRequests.find(req => req.senderId === targetUserId && req.receiverId === user?.uid && req.status === "pending");
+    if (incomingPending) {
+      return { text: "Respond on Profile", disabled: false, action: () => router.push('/profile'), icon: <UserPlus className="mr-2" />, variant: "secondary" as const };
+    }
+    if (requestStatus[targetUserId] === 'sending') {
+        return { text: "Sending...", disabled: true, icon: <Loader2 className="mr-2 animate-spin" />, variant: "default" as const };
+    }
+    return { text: "Add Friend", disabled: false, icon: <UserRoundPlus className="mr-2" />, variant: "default" as const };
+  };
+
+  const getNetworkButtonState = (targetUserId: string) => {
+    if (currentUserProfile?.memberOfNetworks?.includes(targetUserId)) {
+        return { text: "Joined Network", disabled: true, icon: <CheckCircle className="mr-2" />, variant: "outline" as const };
+    }
+    const outgoingPending = pendingNetworkRequests.find(req => req.senderId === user?.uid && req.networkOwnerId === targetUserId && req.status === "pending");
+    if (outgoingPending) {
+        return { text: "Request Sent", disabled: true, icon: <Clock className="mr-2" />, variant: "outline" as const };
+    }
+     if (networkRequestStatus[targetUserId] === 'sending') {
+        return { text: "Sending...", disabled: true, icon: <Loader2 className="mr-2 animate-spin" />, variant: "default" as const };
+    }
+    return { text: "Join Network", disabled: false, icon: <Network className="mr-2" />, variant: "default" as const };
+  };
+
+
+  if (authLoading || (!user && !authLoading) || (loadingUsers && !currentUserProfile)) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-1/2" />
-        <Skeleton className="h-20 w-full rounded-lg" />
-        <Skeleton className="h-20 w-full rounded-lg" />
-      </div>
-    );
-  }
-  
-  if (loadingUsers && !currentUserProfile) { // Show skeletons if loading initial profile too
-     return (
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <FriendsIcon className="h-8 w-8 text-primary" />
@@ -222,11 +245,14 @@ export default function FriendsPage() { // Renamed component
             <Card key={i} className="p-4">
                 <div className="flex items-center space-x-4">
                     <Skeleton className="h-12 w-12 rounded-full" />
-                    <div className="space-y-2">
-                        <Skeleton className="h-4 w-[200px]" />
-                        <Skeleton className="h-3 w-[150px]" />
+                    <div className="space-y-2 flex-grow">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
                     </div>
-                    <Skeleton className="h-10 w-36 ml-auto" />
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <Skeleton className="h-9 w-28" />
+                        <Skeleton className="h-9 w-32" />
+                    </div>
                 </div>
             </Card>
         ))}
@@ -235,7 +261,7 @@ export default function FriendsPage() { // Renamed component
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-2 mb-4">
         <FriendsIcon className="h-8 w-8 text-primary" />
         <h1 className="text-3xl font-bold tracking-tight">Friends</h1>
@@ -258,17 +284,20 @@ export default function FriendsPage() { // Renamed component
                 <Card key={`skel-${i}`} className="p-4">
                     <div className="flex items-center space-x-4">
                         <Skeleton className="h-12 w-12 rounded-full" />
-                        <div className="space-y-2">
-                            <Skeleton className="h-4 w-[200px]" />
-                            <Skeleton className="h-3 w-[150px]" />
+                        <div className="space-y-2 flex-grow">
+                            <Skeleton className="h-4 w-3/4" />
+                            <Skeleton className="h-3 w-1/2" />
                         </div>
-                        <Skeleton className="h-10 w-36 ml-auto" />
+                         <div className="flex flex-col sm:flex-row gap-2">
+                            <Skeleton className="h-9 w-28" />
+                            <Skeleton className="h-9 w-32" />
+                        </div>
                     </div>
                 </Card>
             ))}
          </div>
       )}
-      
+
       {!loadingUsers && filteredUsers.length === 0 && (
         <p className="text-muted-foreground text-center py-8">
             {searchTerm ? `No users found matching "${searchTerm}".` : "No other users found to connect with yet."}
@@ -277,10 +306,12 @@ export default function FriendsPage() { // Renamed component
 
       <div className="space-y-4">
         {filteredUsers.map((u) => {
-          const buttonState = getButtonState(u.uid);
+          if (u.uid === user?.uid) return null; // Don't show current user
+          const friendButtonState = getFriendButtonState(u.uid);
+          const networkButtonState = getNetworkButtonState(u.uid);
           return (
             <Card key={u.uid} className="p-4 shadow-sm">
-              <div className="flex items-center space-x-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
                 <Avatar className="h-12 w-12">
                   <AvatarImage src={u.photoURL || undefined} alt={u.displayName || "User"} />
                   <AvatarFallback>{getInitials(u.displayName)}</AvatarFallback>
@@ -289,17 +320,28 @@ export default function FriendsPage() { // Renamed component
                   <p className="font-semibold text-lg">{u.displayName || "Anonymous User"}</p>
                   <p className="text-sm text-muted-foreground">{u.email || "No email"}</p>
                 </div>
-                {user && u.uid !== user.uid && (
-                  <Button 
-                    onClick={() => buttonState.action ? buttonState.action() : handleSendFriendRequest(u)} 
-                    disabled={buttonState.disabled || requestStatus[u.uid] === 'sending'}
-                    variant={buttonState.text === "Respond to Request" ? "outline" : "default"}
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-border">
+                  <Button
+                    onClick={() => friendButtonState.action ? friendButtonState.action() : handleSendFriendRequest(u)}
+                    disabled={friendButtonState.disabled || requestStatus[u.uid] === 'sending'}
+                    variant={friendButtonState.variant}
                     size="sm"
+                    className="w-full sm:w-auto justify-center"
                   >
-                    {buttonState.icon}
-                    {buttonState.text}
+                    {friendButtonState.icon}
+                    {friendButtonState.text}
                   </Button>
-                )}
+                  <Button
+                    onClick={() => networkButtonState.action ? networkButtonState.action() : handleRequestToJoinNetwork(u)}
+                    disabled={networkButtonState.disabled || networkRequestStatus[u.uid] === 'sending' || u.uid === currentUserProfile?.uid}
+                    variant={networkButtonState.variant}
+                    size="sm"
+                    className="w-full sm:w-auto justify-center"
+                  >
+                    {networkButtonState.icon}
+                    {networkButtonState.text}
+                  </Button>
+                </div>
               </div>
             </Card>
           );
@@ -308,8 +350,3 @@ export default function FriendsPage() { // Renamed component
     </div>
   );
 }
-    
-
-    
-
-    
