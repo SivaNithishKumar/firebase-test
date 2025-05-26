@@ -38,7 +38,7 @@ export default function RootLayout({
         <AuthProvider>
           <div className="relative flex min-h-screen flex-col">
             <Header />
-            <main className="flex-1 container py-8">{children}</main>
+            <main className="flex-1 container mx-auto py-8">{children}</main>
           </div>
           <Toaster />
         </AuthProvider>
