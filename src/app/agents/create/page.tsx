@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect } from "react";
@@ -38,7 +39,7 @@ export default function CreateAgentPage() {
         <Bot className="h-12 w-12 mx-auto text-primary mb-2" />
         <h1 className="text-3xl font-bold tracking-tight">Create New AI Agent</h1>
         <p className="text-muted-foreground">
-          Define the name and persona for your new AI companion.
+          Define the name and persona for your new AI companion, or let our AI assistant help you craft one!
         </p>
       </div>
       <AgentCreationForm userId={user.uid} />
