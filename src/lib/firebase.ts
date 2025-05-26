@@ -1,7 +1,8 @@
+
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore, Timestamp } from "firebase/firestore";
-// Removed Functions import
+import { getFunctions, type Functions } from "firebase/functions"; // Added Functions import
 
 // Define placeholder values to check against
 const PLACEHOLDER_API_KEY = "YOUR_API_KEY";
@@ -29,7 +30,7 @@ if (
   !firebaseConfig.authDomain ||
   !firebaseConfig.projectId
 ) {
-  const exampleEnvContent = 
+  const exampleEnvContent =
     "NEXT_PUBLIC_FIREBASE_API_KEY=your_actual_api_key\\n" +
     "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_actual_auth_domain\\n" +
     "NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_actual_project_id\\n" +
@@ -50,7 +51,7 @@ if (
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
-// Removed functions instance
+let functions: Functions; // Added functions instance
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
@@ -60,6 +61,6 @@ if (!getApps().length) {
 
 auth = getAuth(app);
 db = getFirestore(app);
-// functions = getFunctions(app); // Removed Functions initialization
+functions = getFunctions(app); // Initialized Functions
 
-export { app, auth, db, Timestamp }; // Removed functions from export
+export { app, auth, db, functions, Timestamp }; // Added functions to export

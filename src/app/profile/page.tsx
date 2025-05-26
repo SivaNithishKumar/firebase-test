@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserCircle, Mail, CalendarDays, Users, UserPlus, UserCheck, UserX, Loader2, Network, UserMinus, UsersRound } from "lucide-react";
 import { format } from 'date-fns';
-import { db } from "@/lib/firebase"; 
-import { Timestamp } from "firebase/firestore"; // Explicitly import Timestamp
+import { db, functions, Timestamp } from "@/lib/firebase"; // Added functions
+import { httpsCallable } from "firebase/functions"; // Added httpsCallable
 import { 
   doc, 
   getDoc, 
@@ -20,25 +19,21 @@ import {
   collection, 
   query, 
   where, 
-  writeBatch, 
-  arrayUnion, 
-  arrayRemove, 
-  serverTimestamp,
-  updateDoc,
-  deleteDoc,
-  getDocs,
-  runTransaction
+  // Removed direct write imports not needed here anymore if functions handle all
+  // writeBatch, arrayUnion, arrayRemove, serverTimestamp, updateDoc, deleteDoc, getDocs, runTransaction
+  setDoc // Keep setDoc if still used for profile creation fallback
 } from "firebase/firestore";
 import type { AppUserProfile, FriendRequest, NetworkJoinRequest } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
 const convertAppUserProfileTimestamp = (profileData: any): AppUserProfile => {
-    if (!profileData) return { uid: '', displayName: 'Unknown', email: null, createdAt: Date.now(), friends: [], memberOfNetworks: [], myNetworkMembers: [] } as AppUserProfile; 
+    if (!profileData) return { uid: '', displayName: 'Unknown', email: null, photoURL: null, createdAt: Date.now(), friends: [], memberOfNetworks: [], myNetworkMembers: [] } as AppUserProfile; 
     return {
         ...profileData,
         uid: profileData.uid || '',
         displayName: profileData.displayName || 'Anonymous User',
         email: profileData.email || null,
+        photoURL: profileData.photoURL || null,
         createdAt: profileData.createdAt instanceof Timestamp ? profileData.createdAt.toMillis() : (typeof profileData.createdAt === 'number' ? profileData.createdAt : Date.now()),
         friends: profileData.friends || [],
         memberOfNetworks: profileData.memberOfNetworks || [],
@@ -106,7 +101,6 @@ export default function ProfilePage() {
           }
         } else {
           console.warn("[ProfilePage] User profile not found for UID:", user.uid);
-          // Attempt to create a basic profile if it's missing, e.g., for users created before profile logic
           const basicProfile: AppUserProfile = {
             uid: user.uid,
             displayName: user.displayName || "User",
@@ -118,8 +112,8 @@ export default function ProfilePage() {
             myNetworkMembers: []
           };
           try {
-            await setDoc(profileRef, { ...basicProfile, createdAt: serverTimestamp() });
-            setProfile(convertAppUserProfileTimestamp(basicProfile)); // Set local state
+            await setDoc(profileRef, { ...basicProfile, createdAt: Timestamp.now() }); // Use Timestamp.now() for consistency
+            setProfile(convertAppUserProfileTimestamp(basicProfile));
             console.log("[ProfilePage] Created basic profile for UID:", user.uid);
           } catch (error) {
             console.error("[ProfilePage] Error creating basic profile:", error);
@@ -162,33 +156,22 @@ export default function ProfilePage() {
       setMyNetworkMembersList([]);
       setLoadingProfile(false);
     }
-  }, [user, toast, router]); // Added router to dependency array
+  }, [user, toast, router]);
 
 
   const handleAcceptFriendRequest = async (request: FriendRequest) => {
-    if (!user || !profile || !request.senderId) {
-        toast({ title: "Error", description: "Cannot process request. Missing user or profile information.", variant: "destructive" });
-        return;
-    }
+    if (!user || !request.senderId) return;
     setProcessingRequestId(request.id);
-    console.log(`[Friend Accept] User ${user.uid} accepting request ${request.id} from ${request.senderId}`);
+    const acceptFriend = httpsCallable(functions, 'acceptFriendRequest');
     try {
-      const batch = writeBatch(db);
-      const requestRef = doc(db, "friendRequests", request.id);
-      batch.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
-
-      const currentUserProfileRef = doc(db, "userProfiles", user.uid);
-      batch.update(currentUserProfileRef, { friends: arrayUnion(request.senderId) });
-
-      const senderProfileRef = doc(db, "userProfiles", request.senderId);
-      batch.update(senderProfileRef, { friends: arrayUnion(user.uid) });
-      
-      console.log(`[Friend Accept] Batch Details: Update friendRequest ${request.id} to accepted. Add ${request.senderId} to ${user.uid}'s friends. Add ${user.uid} to ${request.senderId}'s friends.`);
-      await batch.commit();
-      toast({ title: "Friend Request Accepted", description: `You are now friends with ${request.senderDisplayName || 'User'}.` });
+      console.log(`[Friend Accept CF Call] User ${user.uid} calling acceptFriendRequest for request ${request.id} from ${request.senderId}`);
+      const result = await acceptFriend({ requestId: request.id });
+      console.log('[Friend Accept CF Result]', result.data);
+      // @ts-ignore
+      toast({ title: "Friend Request Accepted", description: (result.data?.message || `You are now friends with ${request.senderDisplayName || 'User'}.`) });
     } catch (error: any) {
-      console.error(`[Friend Accept] Error accepting friend request ${request.id}:`, error);
-      toast({ title: "Error Accepting Friend", description: `Could not accept request: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
+      console.error(`[Friend Accept CF Error] Error accepting friend request ${request.id}:`, error);
+      toast({ title: "Error Accepting Friend", description: error.message || 'Could not accept request.', variant: "destructive" });
     } finally {
       setProcessingRequestId(null);
     }
@@ -197,43 +180,37 @@ export default function ProfilePage() {
   const handleDeclineFriendRequest = async (request: FriendRequest) => {
     if (!user || !request.senderId) return;
     setProcessingRequestId(request.id);
-    console.log(`[Friend Decline] User ${user.uid} declining request ${request.id} from ${request.senderId}`);
+    const declineFriend = httpsCallable(functions, 'declineFriendRequest');
     try {
-      const requestRef = doc(db, "friendRequests", request.id);
-      await updateDoc(requestRef, { status: "declined", updatedAt: serverTimestamp() });
-      toast({ title: "Friend Request Declined", description: `Request from ${request.senderDisplayName || 'User'} declined.` });
+      console.log(`[Friend Decline CF Call] User ${user.uid} calling declineFriendRequest for request ${request.id}`);
+      const result = await declineFriend({ requestId: request.id });
+      console.log('[Friend Decline CF Result]', result.data);
+      // @ts-ignore
+      toast({ title: "Friend Request Declined", description: (result.data?.message || `Request from ${request.senderDisplayName || 'User'} declined.`) });
     } catch (error: any) {
-      console.error(`[Friend Decline] Error declining friend request ${request.id}:`, error);
-      toast({ title: "Error Declining Friend", description: `Could not decline request: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
+      console.error(`[Friend Decline CF Error] Error declining friend request ${request.id}:`, error);
+      toast({ title: "Error Declining Friend", description: error.message || 'Could not decline request.', variant: "destructive" });
     } finally {
       setProcessingRequestId(null);
     }
   };
 
   const handleUnfriend = async (friendId: string) => {
-    if (!user || !profile || !friendId) {
-      toast({ title: "Error", description: "Cannot process unfriend. Missing user or profile information.", variant: "destructive" });
-      return;
-    }
+    if (!user) return;
     setProcessingRequestId(friendId);
-    console.log(`[Unfriend] User ${user.uid} unfriending ${friendId}`);
+    const unfriend = httpsCallable(functions, 'unfriendUser');
     try {
-      const batch = writeBatch(db);
-      const currentUserProfileRef = doc(db, "userProfiles", user.uid);
-      batch.update(currentUserProfileRef, { friends: arrayRemove(friendId) });
-
-      const friendProfileRef = doc(db, "userProfiles", friendId);
-      batch.update(friendProfileRef, { friends: arrayRemove(user.uid) });
-
-      console.log(`[Unfriend] Batch Details: Remove ${friendId} from ${user.uid}'s friends. Remove ${user.uid} from ${friendId}'s friends.`);
-      await batch.commit();
+      console.log(`[Unfriend CF Call] User ${user.uid} calling unfriendUser for friend ${friendId}`);
+      const result = await unfriend({ friendId });
+      console.log('[Unfriend CF Result]', result.data);
       const unfriendedUser = friends.find(f => f.uid === friendId);
-      toast({ title: "Unfriended", description: `You are no longer friends with ${unfriendedUser?.displayName || 'this user'}.` });
+      // @ts-ignore
+      toast({ title: "Unfriended", description: (result.data?.message || `You are no longer friends with ${unfriendedUser?.displayName || 'this user'}.`) });
     } catch (error: any) {
-        console.error(`[Unfriend] Error unfriending user ${friendId}:`, error);
-        toast({ title: "Error Unfriending", description: `Could not unfriend user: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
+      console.error(`[Unfriend CF Error] Error unfriending user ${friendId}:`, error);
+      toast({ title: "Error Unfriending", description: error.message || 'Could not unfriend user.', variant: "destructive" });
     } finally {
-        setProcessingRequestId(null);
+      setProcessingRequestId(null);
     }
   };
 
@@ -243,74 +220,55 @@ export default function ProfilePage() {
         return;
     }
     setProcessingRequestId(request.id);
-    console.log(`[Network Join Accept] Network Owner ${user.uid} (Profile: ${profile.displayName}) accepting request ${request.id} from Sender ${request.senderId} (${request.senderDisplayName})`);
-    
+    const acceptJoin = httpsCallable(functions, 'acceptNetworkJoinRequest');
     try {
-      const batch = writeBatch(db);
-      const requestRef = doc(db, "networkJoinRequests", request.id);
-      batch.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
-
-      const networkOwnerProfileRef = doc(db, "userProfiles", user.uid); // Current user is the network owner
-      batch.update(networkOwnerProfileRef, { myNetworkMembers: arrayUnion(request.senderId) });
-
-      const senderProfileRef = doc(db, "userProfiles", request.senderId);
-      batch.update(senderProfileRef, { memberOfNetworks: arrayUnion(user.uid) }); // user.uid is networkOwnerId
-
-      console.log(`[Network Join Accept] Batch Details:
-      1. Update networkJoinRequest ${request.id} to accepted.
-      2. Network Owner (${user.uid}) adds ${request.senderId} to their myNetworkMembers.
-      3. Sender (${request.senderId}) adds Network Owner (${user.uid}) to their memberOfNetworks.`);
-      
-      await batch.commit();
-      toast({ title: "Network Join Request Accepted", description: `${request.senderDisplayName || 'User'} has joined your network.` });
+      console.log(`[Network Join Accept CF Call] User ${user.uid} calling acceptNetworkJoinRequest for request ${request.id} from ${request.senderId}`);
+      const result = await acceptJoin({ requestId: request.id });
+      console.log('[Network Join Accept CF Result]', result.data);
+      // @ts-ignore
+      toast({ title: "Network Join Request Accepted", description: (result.data?.message || `${request.senderDisplayName || 'User'} has joined your network.`) });
     } catch (error: any) {
-        console.error(`[Network Join Accept] Error accepting network join request ${request.id} from ${request.senderId}:`, error);
-        toast({ title: "Error Accepting Join Request", description: `Could not accept join request: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
+      console.error(`[Network Join Accept CF Error] Error accepting request ${request.id}:`, error);
+      toast({ title: "Error Accepting Join Request", description: error.message || 'Could not accept join request.', variant: "destructive" });
     } finally {
-        setProcessingRequestId(null);
+      setProcessingRequestId(null);
     }
   };
 
   const handleDeclineNetworkJoinRequest = async (request: NetworkJoinRequest) => {
     if (!user || !request.senderId) return;
     setProcessingRequestId(request.id);
-    console.log(`[Network Join Decline] Network Owner ${user.uid} declining request ${request.id} from Sender ${request.senderId}`);
+    const declineJoin = httpsCallable(functions, 'declineNetworkJoinRequest');
     try {
-      const requestRef = doc(db, "networkJoinRequests", request.id);
-      await updateDoc(requestRef, { status: "declined", updatedAt: serverTimestamp() });
-      toast({ title: "Network Join Request Declined", description: `Request from ${request.senderDisplayName || 'User'} to join your network declined.` });
+      console.log(`[Network Join Decline CF Call] User ${user.uid} calling declineNetworkJoinRequest for request ${request.id}`);
+      const result = await declineJoin({ requestId: request.id });
+      console.log('[Network Join Decline CF Result]', result.data);
+      // @ts-ignore
+      toast({ title: "Network Join Request Declined", description: (result.data?.message || `Request from ${request.senderDisplayName || 'User'} declined.`) });
     } catch (error: any) {
-        console.error(`[Network Join Decline] Error declining network join request ${request.id} from ${request.senderId}:`, error);
-        toast({ title: "Error Declining Join Request", description: `Could not decline join request: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
+      console.error(`[Network Join Decline CF Error] Error declining request ${request.id}:`, error);
+      toast({ title: "Error Declining Join Request", description: error.message || 'Could not decline request.', variant: "destructive" });
     } finally {
-        setProcessingRequestId(null);
+      setProcessingRequestId(null);
     }
   };
 
   const handleRemoveNetworkMember = async (memberId: string) => {
-    if (!user || !profile || !memberId) {
-      toast({ title: "Error", description: "Cannot process removal. Missing user, profile, or member information.", variant: "destructive" });
-      return;
-    }
-    setProcessingRequestId(memberId); 
-    console.log(`[Remove Member] Network Owner ${user.uid} removing member ${memberId} from their network.`);
+    if (!user || !memberId) return;
+    setProcessingRequestId(memberId);
+    const removeMember = httpsCallable(functions, 'removeNetworkMember');
     try {
-      const batch = writeBatch(db);
-      const networkOwnerProfileRef = doc(db, "userProfiles", user.uid);
-      batch.update(networkOwnerProfileRef, { myNetworkMembers: arrayRemove(memberId) });
-
-      const memberProfileRef = doc(db, "userProfiles", memberId);
-      batch.update(memberProfileRef, { memberOfNetworks: arrayRemove(user.uid) });
-      
-      console.log(`[Remove Member] Batch Details: Network Owner (${user.uid}) removes ${memberId} from myNetworkMembers. Member (${memberId}) removes Network Owner (${user.uid}) from memberOfNetworks.`);
-      await batch.commit();
+      console.log(`[Remove Member CF Call] User ${user.uid} calling removeNetworkMember for member ${memberId}`);
+      const result = await removeMember({ memberId });
+      console.log('[Remove Member CF Result]', result.data);
       const removedMember = myNetworkMembersList.find(m => m.uid === memberId);
-      toast({ title: "Member Removed", description: `${removedMember?.displayName || 'User'} has been removed from your network.` });
+      // @ts-ignore
+      toast({ title: "Member Removed", description: (result.data?.message || `${removedMember?.displayName || 'User'} has been removed from your network.`) });
     } catch (error: any) {
-        console.error(`[Remove Member] Error removing member ${memberId} from network of ${user.uid}:`, error);
-        toast({ title: "Error Removing Member", description: `Could not remove member: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
+      console.error(`[Remove Member CF Error] Error removing member ${memberId}:`, error);
+      toast({ title: "Error Removing Member", description: error.message || 'Could not remove member.', variant: "destructive" });
     } finally {
-        setProcessingRequestId(null);
+      setProcessingRequestId(null);
     }
   };
 
@@ -340,12 +298,10 @@ export default function ProfilePage() {
   }
   
   if (!user && !authLoading) {
-    // This case should be handled by the useEffect redirect, but as a fallback:
     return <div className="text-center">Please log in to view your profile.</div>;
   }
 
   if (!profile && !loadingProfile && user) {
-    // This might happen if profile creation failed or is delayed
     return <div className="text-center">User profile not found. It might be still creating or an error occurred. Please try refreshing.</div>;
   }
 
@@ -440,5 +396,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-
-    
