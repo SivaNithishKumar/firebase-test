@@ -21,7 +21,7 @@ export type IntelligentReactionInput = z.infer<typeof IntelligentReactionInputSc
 const IntelligentReactionOutputSchema = z.object({
   shouldReact: z.boolean().describe('Whether the agent should react to the post.'),
   reactionType: z.string().optional().describe('A single-word reaction type (e.g., "like", "love", "celebrate").'),
-  reactionMessage: z.string().optional().describe('An optional brief message accompanying the reaction.'),
+  reactionMessage: z.string().optional().describe('An optional brief message or short comment accompanying the reaction.'),
 });
 export type IntelligentReactionOutput = z.infer<typeof IntelligentReactionOutputSchema>;
 
@@ -42,20 +42,23 @@ If you decide to react, you must also determine:
 1. The TYPE of reaction ("reactionType"): This should be a SINGLE, CONCISE WORD representing a common social media reaction.
    Choose from standard reactions like: "like", "love", "haha", "wow", "sad", "angry", "support", "celebrate", "insightful", "curious".
    DO NOT use long phrases or sentences for "reactionType". It must be a simple category. For example: "like".
-2. A REACTION MESSAGE ("reactionMessage") (optional): If your reaction type is something that typically involves a textual comment, or if you simply want to add a thought, provide a brief message here. If you are just "liking" without a specific message, this can be omitted or be an empty string. For example: "Great post!".
+2. A REACTION MESSAGE ("reactionMessage") (optional): This is the textual content of your reaction.
+   If your reaction type is something that typically involves a textual comment (e.g., "insightful", "support"), or if you simply want to add a thought or a short comment (1-2 sentences max), provide a brief message here.
+   This message should be concise. If you are just "liking" without a specific message, this can be omitted or be an empty string.
+   For example: "Great point!" or "This is exciting news!".
 
 Return a JSON object with the following fields:
 - "shouldReact": boolean (true if you should react, false otherwise)
 - "reactionType": string (REQUIRED if "shouldReact" is true. Must be one of the standard single-word reactions. For example: "celebrate")
-- "reactionMessage": string (OPTIONAL. The textual content of your reaction/comment, if applicable.)
+- "reactionMessage": string (OPTIONAL. The textual content of your reaction/comment, if applicable. Keep it brief.)
 
 If "shouldReact" is false, "reactionType" and "reactionMessage" should not be set or can be empty strings.
 
-Example of a good JSON response if reacting with a "like" and a message:
+Example of a good JSON response if reacting with an "insightful" reaction and a message:
 {
   "shouldReact": true,
-  "reactionType": "like",
-  "reactionMessage": "Awesome!"
+  "reactionType": "insightful",
+  "reactionMessage": "This perspective is really valuable, thanks for sharing."
 }
 
 Example of a good JSON response if reacting with just a "love" (no specific message):
@@ -81,6 +84,12 @@ const intelligentReactionFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await intelligentReactionPrompt(input);
+    // Ensure that if reactionMessage is an empty string, it's treated as undefined by Zod schema if optional.
+    // However, our schema marks it optional, so empty string is fine, or it can be truly absent.
+    // Let's ensure it's not null, which Zod might not like for an optional string.
+    if (output && output.reactionMessage === null) {
+        output.reactionMessage = undefined;
+    }
     return output!;
   }
 );

@@ -54,10 +54,10 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           const agentsQuery = query(collection(db, "agents"), where("userId", "==", currentUser.uid));
           const agentSnapshot = await getDocs(agentsQuery);
           const agentsData: Agent[] = [];
-          agentSnapshot.forEach(docSnap => { 
+          agentSnapshot.forEach(docSnap => {
             const data = docSnap.data();
-            agentsData.push({ 
-              id: docSnap.id, 
+            agentsData.push({
+              id: docSnap.id,
               ...data,
               createdAt: convertTimestamp(data.createdAt),
             } as Agent);
@@ -90,20 +90,18 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     }
 
     // For simplicity, let's assume the first agent of the current user reacts.
-    // You might want a more sophisticated way to choose which agent reacts.
-    const reactingAgent = userAgents[0]; 
+    const reactingAgent = userAgents[0];
     const postRef = doc(db, "posts", post.id);
     console.log(`[User Reaction] Agent ${reactingAgent.name} (ID: ${reactingAgent.id}) attempting to '${reactionType}' post ${post.id}`);
 
     try {
       // Find if this agent already made this specific type of reaction
-      // We need to compare based on agentId and type, as id is client generated.
       const existingReaction = post.reactions?.find(r => r.agentId === reactingAgent.id && r.type === reactionType);
 
       if (existingReaction) {
         console.log(`[User Reaction] Agent ${reactingAgent.name} removing reaction from post ${post.id}:`, existingReaction);
         await updateDoc(postRef, {
-          reactions: arrayRemove(existingReaction) 
+          reactions: arrayRemove(existingReaction)
         });
         console.log("[User Reaction] Reaction removed successfully from Firestore.");
         toast({ title: "Reaction Removed", description: `${reactingAgent.name} removed their ${reactionType} reaction.` });
@@ -112,15 +110,16 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           agentId: reactingAgent.id,
           agentName: reactingAgent.name,
           type: reactionType,
-          createdAt: Date.now(), // Changed from serverTimestamp()
+          // No message for direct user-triggered reactions for now, could be added later
+          createdAt: Date.now(),
         };
          const reactionForUnion = {
             ...newReactionData,
-            id: `${reactingAgent.id}-${Date.now()}-${reactionType}`, // Client-side unique ID for React keys etc.
+            id: `${reactingAgent.id}-${Date.now()}-${reactionType.replace(/\s+/g, '-')}`,
         };
         console.log(`[User Reaction] Agent ${reactingAgent.name} adding reaction to Firestore:`, JSON.stringify(reactionForUnion));
         await updateDoc(postRef, {
-          reactions: arrayUnion(reactionForUnion) 
+          reactions: arrayUnion(reactionForUnion)
         });
         console.log("[User Reaction] Reaction added successfully to Firestore.");
         toast({ title: "Agent Reacted!", description: `${reactingAgent.name} reacted with ${reactionType}.` });
@@ -138,24 +137,23 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     }
 
     // Pick a random agent of the current user to respond
-    const respondingAgent = userAgents[Math.floor(Math.random() * userAgents.length)]; 
+    const respondingAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
     console.log(`[AI Comment Trigger] Agent ${respondingAgent.name} (ID: ${respondingAgent.id}) preparing to respond to comment on post ${currentPost.id}`);
 
     const existingCommentsStrings = (currentPost.comments || []).map(c => `${c.authorName}: ${c.content}`);
-    
-    const currentThreadForAI = [...existingCommentsStrings]; 
+    const currentThreadForAI = [...existingCommentsStrings, `${triggeringUserDisplayName}: ${triggeringUserCommentContent}`]; // Add current user comment
 
     const aiInput: VersatileResponseInput = {
-      postContent: `${currentPost.content} (User ${triggeringUserDisplayName} just commented: "${triggeringUserCommentContent}")`,
-      authorName: triggeringUserDisplayName, 
+      postContent: currentPost.content, // Base post content
+      authorName: currentPost.userDisplayName || "Original Poster", // Author of the original post
       agentPersona: respondingAgent.persona,
-      existingComments: currentThreadForAI,
+      existingComments: currentThreadForAI, // Pass the whole thread including the triggering comment
     };
-    console.log(`[AI Comment Trigger] Input for agent ${respondingAgent.name}:`, JSON.stringify(aiInput));
+    console.log(`[AI Comment Trigger] Input for agent ${respondingAgent.name}:`, JSON.stringify(aiInput, null, 2));
 
     try {
       const aiOutput: VersatileResponseOutput = await versatileResponse(aiInput);
-      console.log(`[AI Comment Trigger] Output from agent ${respondingAgent.name}:`, JSON.stringify(aiOutput));
+      console.log(`[AI Comment Trigger] Output from agent ${respondingAgent.name}:`, JSON.stringify(aiOutput, null, 2));
 
       if (aiOutput.response && aiOutput.response.trim() !== "") {
         const agentCommentData = {
@@ -164,13 +162,13 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           authorName: respondingAgent.name,
           authorAvatarUrl: respondingAgent.avatarUrl || `https://placehold.co/40x40/000000/FFFFFF.png?text=${getInitials(respondingAgent.name)}`,
           content: aiOutput.response,
-          createdAt: Date.now(), // Changed from serverTimestamp()
+          createdAt: Date.now(),
         };
         const agentCommentForUnion = {
             ...agentCommentData,
-            id: doc(collection(db, "dummy")).id, 
+            id: doc(collection(db, "dummy")).id, // Firestore auto-ID for client-side key
         };
-        
+
         console.log(`[AI Comment Trigger] Agent ${respondingAgent.name} attempting to add comment to Firestore:`, JSON.stringify(agentCommentForUnion));
         const postRef = doc(db, "posts", currentPost.id);
         await updateDoc(postRef, {
@@ -183,10 +181,10 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       }
     } catch (error: any) {
       console.error(`[AI Comment Trigger] Error with agent ${respondingAgent.name} (ID: ${respondingAgent.id}) AI flow or Firestore update:`, error);
-      toast({ 
-        title: "AI Comment Error", 
-        description: `Agent ${respondingAgent.name} failed to comment. ${error.message || 'Unknown AI error'}`, 
-        variant: "destructive" 
+      toast({
+        title: "AI Comment Error",
+        description: `Agent ${respondingAgent.name} failed to comment. ${error.message || 'Unknown AI error'}`,
+        variant: "destructive"
       });
     }
   };
@@ -195,7 +193,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser) return;
     setIsCommenting(true);
-    const submittedCommentContent = newComment; 
+    const submittedCommentContent = newComment;
     const userDisplayNameForAI = currentUser.displayName || "Anonymous User";
     console.log(`[User Comment] User ${currentUser.uid} attempting to add comment to post ${post.id}: "${submittedCommentContent}"`);
 
@@ -205,35 +203,39 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       authorName: userDisplayNameForAI,
       authorAvatarUrl: currentUser.photoURL || null,
       content: submittedCommentContent,
-      createdAt: Date.now(), // Changed from serverTimestamp() 
+      createdAt: Date.now(),
     };
-    const newCommentForUnion = { 
-        ...userCommentData, 
-        id: doc(collection(db, "dummy")).id, 
+    const newCommentForUnion = {
+        ...userCommentData,
+        id: doc(collection(db, "dummy")).id, // Firestore auto-ID for client-side key
     };
 
     try {
       const postRef = doc(db, "posts", post.id);
       console.log(`[User Comment] User comment data for Firestore:`, JSON.stringify(newCommentForUnion));
       await updateDoc(postRef, {
-        comments: arrayUnion(newCommentForUnion) 
+        comments: arrayUnion(newCommentForUnion)
       });
       console.log("[User Comment] User comment added successfully to Firestore.");
-      
-      setNewComment(""); 
+
+      setNewComment("");
       toast({ title: "Comment Added", description: "Your comment has been posted." });
+
+      // Prepare updated post object for AI, ensuring comments array exists and includes the new comment
+      const updatedComments = [
+        ...(post.comments || []),
+        {
+          ...newCommentForUnion,
+          createdAt: newCommentForUnion.createdAt // Already a number
+        } as CommentType,
+      ];
 
       const updatedPostForAI: Post = {
         ...post,
-        comments: [
-          ...(post.comments || []),
-          {
-            ...newCommentForUnion,
-            createdAt: newCommentForUnion.createdAt // Already a number from Date.now()
-          } as CommentType, 
-        ],
+        comments: updatedComments,
       };
-      triggerAgentCommentResponse(updatedPostForAI, submittedCommentContent, userDisplayNameForAI);
+      // Trigger agent response after user's comment is successfully added
+      await triggerAgentCommentResponse(updatedPostForAI, submittedCommentContent, userDisplayNameForAI);
 
     } catch (error: any) {
       console.error(`[User Comment] Error adding user comment to post ${post.id}:`, error);
@@ -242,7 +244,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       setIsCommenting(false);
     }
   };
-  
+
   const handleDeletePost = async () => {
     if (!currentUser || currentUser.uid !== post.userId) {
         toast({ title: "Permission Denied", description: "You can only delete your own posts.", variant: "destructive" });
@@ -301,8 +303,8 @@ export function PostCard({ post, currentUser }: PostCardProps) {
             <Image
               src={post.imageUrl}
               alt="Post image"
-              fill 
-              style={{objectFit: "cover"}} 
+              fill
+              style={{objectFit: "cover"}}
               className="bg-muted"
               data-ai-hint="social media image"
             />
@@ -312,8 +314,12 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       <CardFooter className="p-4 pt-2 flex-col items-start">
         {post.reactions && post.reactions.length > 0 && (
           <div className="flex items-center space-x-2 mb-3 flex-wrap gap-y-1">
-            {post.reactions.slice(0, 5).map(reaction => ( 
-              <div key={reaction.id || `${reaction.agentId}-${reaction.type}-${reaction.createdAt}`} className="flex items-center p-1 bg-accent rounded-full text-accent-foreground text-xs" title={`${reaction.agentName} (${reaction.type})`}>
+            {post.reactions.slice(0, 5).map(reaction => (
+              <div
+                key={reaction.id || `${reaction.agentId}-${reaction.type}-${reaction.createdAt}-${reaction.message || 'no-msg'}`}
+                className="flex items-center p-1 bg-accent rounded-full text-accent-foreground text-xs"
+                title={`${reaction.agentName} reacted: ${reaction.type}${reaction.message ? `\nMessage: "${reaction.message}"` : ''}`}
+              >
                  <Bot className="h-3 w-3 mr-1"/> {reaction.type}
               </div>
             ))}
@@ -324,13 +330,13 @@ export function PostCard({ post, currentUser }: PostCardProps) {
         )}
 
         <div className="flex w-full justify-around border-t pt-2">
-          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('like')} disabled={userAgents.length === 0 && !!currentUser}>
+          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('like')} disabled={!currentUser || userAgents.length === 0}>
             <ThumbsUp className="mr-2 h-4 w-4" /> Like
           </Button>
           <Button variant="ghost" className="flex-1" onClick={() => setShowComments(!showComments)}>
             <MessageCircle className="mr-2 h-4 w-4" /> Comment ({post.comments?.length || 0})
           </Button>
-          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('share')} disabled={userAgents.length === 0 && !!currentUser}>
+          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('share')} disabled={!currentUser || userAgents.length === 0}>
             <Share2 className="mr-2 h-4 w-4" /> Share
           </Button>
         </div>
