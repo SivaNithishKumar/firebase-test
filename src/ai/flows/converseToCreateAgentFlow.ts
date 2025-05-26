@@ -65,9 +65,17 @@ Your Interaction Style:
         *   If **name** and **persona** are present but **archetype** is empty, acknowledge them and ask about the archetype. Continue this pattern.
     *   Ask one or two focused questions at a time based on what's missing in the **currentAgentDraft**.
 3.  **Be Creative & Proactive for *Specific Fields***: When you ask about a specific field and the user provides a brief or vague answer (e.g., "a funny agent" for persona, or "they like problems" for psychological traits), take initiative! Suggest a more detailed and creative expansion *for that specific field* in your **updatedAgentDraft**. Your suggestions should aim for hyper-realism. Always ask for user confirmation or adjustments after making such suggestions for a field.
-4.  **Update the Draft**: Always return the **updatedAgentDraft** reflecting any new information from the user or your creative suggestions. Ensure ALL fields from the input **currentAgentDraft** are carried over if they weren't modified by the current turn's interaction.
-5.  **Confirmation**: When you make a suggestion for a field, ask the user for confirmation or if they'd like to refine it.
-6.  **Finalization ('isFinalized')**: Only set **isFinalized** to true when you genuinely believe all key fields (name, persona, archetype, psychologicalProfile, backstory, languageStyle) have substantial, well-developed content, and you've ideally touched upon most of them with the user. Before finalizing, you might say something like, "This is looking like a really interesting agent! We have details for their name, persona, backstory, and style. Are you happy with this draft, or is there anything else you'd like to add or change before we consider it complete?"
+4.  **Constructing **updatedAgentDraft****: Your **updatedAgentDraft** output MUST be built as follows:
+    *   Start by taking an exact copy of all fields and their values from the input **currentAgentDraft**.
+    *   Then, ONLY modify or add values to fields in your **updatedAgentDraft** that were the direct subject of the current conversational turn (e.g., the user provided new information for a field, or you made a specific suggestion for a previously empty/sparse field that the user is considering).
+    *   Fields in the input **currentAgentDraft** that were already substantially filled by the user and were NOT discussed in the current turn MUST remain unchanged in your **updatedAgentDraft**. Do NOT regenerate or "improve" them unless explicitly asked to do so by the user for that specific field.
+5.  **Handling Requests to "Fill Remaining Fields" or "Complete Draft"**: If the user asks you to fill in the rest of the draft or complete missing fields:
+    *   You **MUST** preserve any substantial, user-provided information already present in the **currentAgentDraft** fields.
+    *   Focus your generation *only* on fields that are currently empty, contain placeholder text (like "Not set yet"), or have very minimal content.
+    *   When generating for these empty/sparse fields, use the existing filled fields in **currentAgentDraft** as context to ensure consistency.
+    *   Clearly indicate which fields you have generated content for in your **aiResponseMessage**.
+6.  **Confirmation**: When you make a suggestion for a field, ask the user for confirmation or if they'd like to refine it.
+7.  **Finalization ('isFinalized')**: Only set **isFinalized** to true when you genuinely believe all key fields (name, persona, archetype, psychologicalProfile, backstory, languageStyle) have substantial, well-developed content, and you've ideally touched upon most of them with the user. Before finalizing, you might say something like, "This is looking like a really interesting agent! We have details for their name, persona, backstory, and style. Are you happy with this draft, or is there anything else you'd like to add or change before we consider it complete?"
 
 Remember to populate ALL fields in the **updatedAgentDraft** you return, carrying over existing values from the input **currentAgentDraft** if they weren't changed in the current turn. The **userMessage** and **chatHistory** are your primary source for user intent in the current turn. The **currentAgentDraft** object is your primary source for existing agent details.
 `;
@@ -78,12 +86,18 @@ const converseToCreateAgentPrompt = ai.definePrompt({
   input: { schema: InternalConverseToCreateAgentInputSchema },
   output: { schema: InternalConverseToCreateAgentOutputSchema },
   prompt: (input) => {
+    // This prompt function now focuses only on constructing the conversation history.
+    // The SYSTEM_PROMPT handles the instructions for the AI's behavior.
     let conversationTurn = "";
     input.chatHistory.forEach(msg => {
       conversationTurn += `${msg.role === 'user' ? 'User' : 'AI Assistant'}: ${msg.content}\n`;
     });
-    // The userMessage is already part of chatHistory if the frontend appends it before calling.
-    // If not, ensure it's included. Assuming it is.
+    // The userMessage is assumed to be the last item in chatHistory if the frontend appends it.
+    // If not, it needs to be explicitly appended here.
+    // For safety, ensure userMessage is included, especially if chatHistory might not have it.
+    // if (input.userMessage && (input.chatHistory.length === 0 || input.chatHistory[input.chatHistory.length - 1].content !== input.userMessage)) {
+    //   conversationTurn += `User: ${input.userMessage}\n`;
+    // }
     conversationTurn += `AI Assistant:`; // Cue for AI to complete its turn
     return conversationTurn;
   }
@@ -160,3 +174,5 @@ export async function converseToCreateAgent(input: ConverseToCreateAgentInput): 
   console.log('[converseToCreateAgentFlow] Output from LLM (after processing):', JSON.stringify(validatedOutput, null, 2));
   return validatedOutput;
 }
+
+
