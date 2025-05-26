@@ -10,9 +10,9 @@ import { AgentCard } from "@/components/agents/AgentCard";
 import type { Agent } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, orderBy, type Timestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, orderBy, type Timestamp, addDoc, serverTimestamp, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { PlusCircle, Users, Bot } from "lucide-react";
+import { PlusCircle, Users, Bot, Sparkles, Loader2 } from "lucide-react";
 
 // Helper to convert Firestore Timestamp to number or return original if not a Timestamp
 const convertTimestamp = (timestampField: any): number | any => {
@@ -22,11 +22,31 @@ const convertTimestamp = (timestampField: any): number | any => {
   return timestampField;
 };
 
+const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
+  {
+    name: "Eva AI",
+    persona: "A friendly and curious AI, always eager to learn new things and share interesting facts. Enjoys lighthearted conversations and asking thought-provoking questions.",
+    avatarUrl: "https://placehold.co/128x128/D3D3D3/000000.png?text=EA"
+  },
+  {
+    name: "Sparky Bot",
+    persona: "An energetic and enthusiastic AI, loves to celebrate achievements and offer words of encouragement. Very positive and upbeat.",
+    avatarUrl: "https://placehold.co/128x128/D3D3D3/000000.png?text=SB"
+  },
+  {
+    name: "Professor Cogsworth",
+    persona: "A knowledgeable and analytical AI, enjoys discussing complex topics, offering insights, and debating ideas. Very formal and precise.",
+    avatarUrl: "https://placehold.co/128x128/D3D3D3/000000.png?text=PC"
+  }
+];
+
+
 export default function AgentsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
+  const [isAddingDefaults, setIsAddingDefaults] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -38,7 +58,7 @@ export default function AgentsPage() {
   useEffect(() => {
     if (user) {
       const q = query(
-        collection(db, "agents"), 
+        collection(db, "agents"),
         where("userId", "==", user.uid),
         orderBy("createdAt", "desc")
       );
@@ -46,8 +66,8 @@ export default function AgentsPage() {
         const agentsData: Agent[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          agentsData.push({ 
-            id: doc.id, 
+          agentsData.push({
+            id: doc.id,
             ...data,
             createdAt: convertTimestamp(data.createdAt),
           } as Agent);
@@ -62,6 +82,58 @@ export default function AgentsPage() {
       return () => unsubscribe();
     }
   }, [user, toast]);
+
+  const handleAddDefaultAgents = async () => {
+    if (!user) {
+      toast({ title: "Login Required", description: "You must be logged in to add agents.", variant: "destructive" });
+      return;
+    }
+    setIsAddingDefaults(true);
+    let agentsAddedCount = 0;
+    let agentsSkippedCount = 0;
+
+    try {
+      for (const defaultAgent of defaultAgents) {
+        // Check if an agent with this name already exists for the user
+        const existingAgentQuery = query(
+          collection(db, "agents"),
+          where("userId", "==", user.uid),
+          where("name", "==", defaultAgent.name)
+        );
+        const existingAgentSnapshot = await getDocs(existingAgentQuery);
+
+        if (existingAgentSnapshot.empty) {
+          const agentData = {
+            ...defaultAgent,
+            userId: user.uid,
+            createdAt: serverTimestamp(),
+            avatarUrl: defaultAgent.avatarUrl || `https://placehold.co/128x128/D3D3D3/000000.png?text=${defaultAgent.name.substring(0,2).toUpperCase()}`,
+          };
+          await addDoc(collection(db, "agents"), agentData);
+          agentsAddedCount++;
+        } else {
+          agentsSkippedCount++;
+        }
+      }
+
+      if (agentsAddedCount > 0 && agentsSkippedCount > 0) {
+        toast({ title: "Default Agents", description: `${agentsAddedCount} default agent(s) added. ${agentsSkippedCount} already existed.` });
+      } else if (agentsAddedCount > 0) {
+        toast({ title: "Default Agents Added", description: `${agentsAddedCount} new default agent(s) are now active.` });
+      } else if (agentsSkippedCount > 0) {
+        toast({ title: "Default Agents", description: "All default agents already exist for your account." });
+      } else {
+         toast({ title: "No Default Agents", description: "No default agents were processed.", variant: "default" });
+      }
+
+    } catch (error: any) {
+      console.error("Error adding default agents:", error);
+      toast({ title: "Error Adding Default Agents", description: error.message, variant: "destructive" });
+    } finally {
+      setIsAddingDefaults(false);
+    }
+  };
+
 
   if (authLoading || (!user && !authLoading)) {
     return (
@@ -81,11 +153,21 @@ export default function AgentsPage() {
           <Users className="h-8 w-8 text-primary" />
           <h1 className="text-3xl font-bold tracking-tight">Your AI Agents</h1>
         </div>
-        <Button asChild>
-          <Link href="/agents/create">
-            <PlusCircle className="mr-2 h-4 w-4" /> Create New Agent
-          </Link>
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
+           <Button onClick={handleAddDefaultAgents} variant="outline" disabled={isAddingDefaults}>
+            {isAddingDefaults ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="mr-2 h-4 w-4" />
+            )}
+            Add Default Agents
+          </Button>
+          <Button asChild>
+            <Link href="/agents/create">
+              <PlusCircle className="mr-2 h-4 w-4" /> Create New Agent
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {loadingAgents && (
@@ -99,13 +181,23 @@ export default function AgentsPage() {
           <Bot className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
           <h2 className="text-xl font-semibold text-muted-foreground">No Agents Found</h2>
           <p className="text-muted-foreground mb-6">
-            You haven't created any AI agents yet. Get started by creating your first one!
+            You haven't created any AI agents yet. Get started by creating your first one or add some defaults!
           </p>
-          <Button asChild variant="outline">
-            <Link href="/agents/create">
-              <PlusCircle className="mr-2 h-4 w-4" /> Create Your First Agent
-            </Link>
-          </Button>
+          <div className="flex justify-center gap-4">
+            <Button onClick={handleAddDefaultAgents} variant="outline" disabled={isAddingDefaults}>
+              {isAddingDefaults ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              Add Default Agents
+            </Button>
+            <Button asChild variant="default">
+              <Link href="/agents/create">
+                <PlusCircle className="mr-2 h-4 w-4" /> Create Your First Agent
+              </Link>
+            </Button>
+          </div>
         </div>
       )}
 
