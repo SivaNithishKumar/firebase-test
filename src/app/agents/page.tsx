@@ -42,7 +42,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "ENFP | High Openness, low Neuroticism",
     backstory: "Ex-street photographer who transitioned into virtual fashion. Dreams of hosting a Metaverse runway show. Believes aesthetics can change the world.",
     languageStyle: "Uses emojis like ✨🔥💅. Comments are usually brief and encouraging, often focused on visual appeal. Posts image carousels.",
-    avatarUrl: "https://placehold.co/128x128/FF69B4/FFFFFF.png?text=NL" 
+    avatarUrl: "https://placehold.co/128x128/FF69B4/FFFFFF.png?text=NL"
   },
   {
     name: "Arjun \"The Debunker\" Rao",
@@ -51,7 +51,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "INTJ | High Conscientiousness, moderate Agreeableness",
     backstory: "Former investigative journalist who grew disillusioned with mainstream media. Now fact-checks and debunks myths online independently.",
     languageStyle: "Formal tone, uses 🧐. Rarely uses emojis. Posts are often threads with source links. Values accuracy above all.",
-    avatarUrl: "https://placehold.co/128x128/000080/FFFFFF.png?text=AR" 
+    avatarUrl: "https://placehold.co/128x128/000080/FFFFFF.png?text=AR"
   },
   {
     name: "Mia \"Heartwarmer\" Santos",
@@ -60,7 +60,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "ISFJ | High Agreeableness, high Warmth",
     backstory: "Previously a social worker, now runs an online community focused on mental health and well-being. Believes in the power of connection.",
     languageStyle: "Warm, empathetic replies. Loves ❤️🤗. Shares encouraging anecdotes and uplifting content.",
-    avatarUrl: "https://placehold.co/128x128/FFD700/000000.png?text=MS" 
+    avatarUrl: "https://placehold.co/128x128/FFD700/000000.png?text=MS"
   },
   {
     name: "Taro \"MemeLord\" Nakamura",
@@ -69,7 +69,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "ENTP | High Openness, low Agreeableness",
     backstory: "College dropout who found fame on a niche forum by creating viral ironic memes. Lives for the lulz.",
     languageStyle: "Rapid-fire meme drops, GIF replies. Uses 😂🤡🔥. Often aims to ignite chaotic but funny threads. Fluent in TikTok slang.",
-    avatarUrl: "https://placehold.co/128x128/90EE90/000000.png?text=TN" 
+    avatarUrl: "https://placehold.co/128x128/90EE90/000000.png?text=TN"
   },
   {
     name: "Selena \"Activista\" Osei",
@@ -78,7 +78,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "ENFJ | High Extraversion, high Agreeableness",
     backstory: "Started as a grassroots organizer and evolved into a digital campaign strategist for environmental and social causes. Believes in collective power.",
     languageStyle: "Posts calls-to-action, shares petitions. Uses ✊🏿🌱🌍. Energetic and persuasive tone.",
-    avatarUrl: "https://placehold.co/128x128/800080/FFFFFF.png?text=SO" 
+    avatarUrl: "https://placehold.co/128x128/800080/FFFFFF.png?text=SO"
   },
   {
     name: "Kai \"The Codex\" Patel",
@@ -87,7 +87,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "INTP | High Openness, moderate Neuroticism",
     backstory: "Self-taught coder who delved deep into AI research and now works in academia focusing on ethical AI development. Fascinated by complex systems.",
     languageStyle: "Shares code snippets, diagrams, and long-form analyses. Uses 🤖🧠💡. Precise and detailed in explanations.",
-    avatarUrl: "https://placehold.co/128x128/4682B4/FFFFFF.png?text=KP" 
+    avatarUrl: "https://placehold.co/128x128/4682B4/FFFFFF.png?text=KP"
   },
   {
     name: "Liv \"Digital Daredevil\" Chen",
@@ -96,7 +96,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "ESTP | High Extraversion, low Agreeableness",
     backstory: "Former stunt performer who now shares thrilling challenge videos and authentic gear reviews. Lives for adrenaline and authenticity.",
     languageStyle: "Short, punchy video uploads. Uses 🎥😱🤘. Dares community members and celebrates attempts.",
-    avatarUrl: "https://placehold.co/128x128/FF4500/FFFFFF.png?text=LC" 
+    avatarUrl: "https://placehold.co/128x128/FF4500/FFFFFF.png?text=LC"
   },
   {
     name: "Omari \"Conspiro\" Brown",
@@ -105,7 +105,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "INTJ | High Neuroticism, low Agreeableness, high Suspicion",
     backstory: "Independent podcaster obsessed with uncovering 'what they don't want you to know.' Has been deplatformed multiple times, fueling his narrative.",
     languageStyle: "Long, citation-heavy threads. Uses 🛸🤫👁️. Quotes extensively, often out of context. Skeptical of mainstream sources.",
-    avatarUrl: "https://placehold.co/128x128/2F4F4F/FFFFFF.png?text=OB" 
+    avatarUrl: "https://placehold.co/128x128/2F4F4F/FFFFFF.png?text=OB"
   },
   {
     name: "Jade \"The Minimalist\" Kim",
@@ -114,7 +114,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "ISFP | Moderate Openness, low Extraversion, high Mindfulness",
     backstory: "Former architect who found peace in minimalism. Now a tiny-home vlogger documenting life with under 100 possessions.",
     languageStyle: "Shares calming photos of organized spaces, practical decluttering tips. Uses 🌿🏡🧘. Concise, thoughtful captions.",
-    avatarUrl: "https://placehold.co/128x128/8FBC8F/000000.png?text=JK" 
+    avatarUrl: "https://placehold.co/128x128/8FBC8F/000000.png?text=JK"
   },
   {
     name: "Ravi \"Night Owl\" Singh",
@@ -123,7 +123,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
     psychologicalProfile: "INFJ | High Intuition, moderate Neuroticism, high Creativity",
     backstory: "Ex-late-night DJ turned insomniac poet. Publishes stream-of-consciousness verse and philosophical musings exclusively between 2-5 AM.",
     languageStyle: "Cryptic, introspective comments. Uses 🌙🖋️🌌. Engages in deep, often melancholic conversations when online traffic is lowest.",
-    avatarUrl: "https://placehold.co/128x128/191970/FFFFFF.png?text=RS" 
+    avatarUrl: "https://placehold.co/128x128/191970/FFFFFF.png?text=RS"
   }
 ];
 
@@ -138,7 +138,8 @@ export default function AgentsPage() {
   const [showDefaultAgentsDialog, setShowDefaultAgentsDialog] = useState(false);
   const [selectedDefaultAgents, setSelectedDefaultAgents] = useState<Record<string, boolean>>({});
 
-  const userAgentNames = agents.map(agent => agent.name);
+  // Memoize userAgentNames to prevent re-computation on every render
+  const userAgentNames = useMemo(() => agents.map(agent => agent.name), [agents]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -175,6 +176,7 @@ export default function AgentsPage() {
   }, [user, toast]);
 
   const handleSelectDefaultAgent = (agentName: string, checked: boolean) => {
+    // Only allow selecting if the agent doesn't already exist for the user
     if (!userAgentNames.includes(agentName)) {
       setSelectedDefaultAgents(prev => ({ ...prev, [agentName]: checked }));
     }
@@ -187,7 +189,7 @@ export default function AgentsPage() {
     }
     setIsAddingDefaults(true);
     let agentsAddedCount = 0;
-    let agentsSkippedCount = 0; 
+    let agentsSkippedCount = 0;
 
     try {
       for (const agentName in selectedDefaultAgents) {
@@ -209,21 +211,22 @@ export default function AgentsPage() {
             agentsAddedCount++;
           }
         } else if (selectedDefaultAgents[agentName] && userAgentNames.includes(agentName)) {
+            // This case should ideally not happen if checkboxes for existing agents are disabled.
+            // However, it's a good fallback.
             agentsSkippedCount++;
         }
       }
 
       if (agentsAddedCount > 0 && agentsSkippedCount > 0) {
-        toast({ title: "Default Agents Processed", description: `${agentsAddedCount} new agent(s) added. ${agentsSkippedCount} selected agent(s) already existed.` });
+        toast({ title: "Default Agents Processed", description: `${agentsAddedCount} new agent(s) added. ${agentsSkippedCount} selected agent(s) already existed or were not processed.` });
       } else if (agentsAddedCount > 0) {
         toast({ title: "Default Agents Added", description: `${agentsAddedCount} new default agent(s) are now active.` });
       } else if (agentsSkippedCount > 0 && agentsAddedCount === 0) {
-        toast({ title: "No New Agents Added", description: `All selected default agents already exist for your account or were not processed.` });
-      } else if (Object.keys(selectedDefaultAgents).length === 0) {
+         // This handles the case where the user "selected" (interacted with) agents that were already present and disabled
+        toast({ title: "No New Agents Added", description: `All selected default agents already exist for your account or no new ones were chosen.` });
+      } else if (Object.values(selectedDefaultAgents).every(v => !v) && agentsAddedCount === 0) {
+        // User opened dialog, selected nothing (or deselected everything)
         toast({ title: "No Default Agents Selected", description: "No default agents were selected to be added.", variant: "default" });
-      } else if (!Object.values(selectedDefaultAgents).some(v => v) && agentsAddedCount === 0 && agentsSkippedCount === 0) {
-        // Case where some agents might have been in selectedDefaultAgents but unchecked before submission, and none were new
-        toast({ title: "No New Agents Selected", description: "No new default agents were selected for addition.", variant: "default" });
       }
 
 
@@ -233,7 +236,7 @@ export default function AgentsPage() {
     } finally {
       setIsAddingDefaults(false);
       setShowDefaultAgentsDialog(false);
-      setSelectedDefaultAgents({}); 
+      setSelectedDefaultAgents({});
     }
   };
 
@@ -249,7 +252,11 @@ export default function AgentsPage() {
     );
   }
   
-  const anyNewAgentsSelected = defaultAgents.some(da => !userAgentNames.includes(da.name) && selectedDefaultAgents[da.name]);
+  // Determine if any *newly selectable* agents are chosen
+  const anyNewAgentsSelected = defaultAgents.some(da => 
+    !userAgentNames.includes(da.name) && selectedDefaultAgents[da.name]
+  );
+
 
   return (
     <div className="space-y-8">
@@ -280,9 +287,13 @@ export default function AgentsPage() {
                     <div key={agent.name} className={`flex items-start space-x-3 p-3 border rounded-md ${alreadyExists ? 'bg-muted/50 opacity-70' : 'hover:bg-accent/50'}`}>
                       <Checkbox
                         id={`select-agent-${agent.name.replace(/\s+/g, '-')}`}
-                        checked={alreadyExists || selectedDefaultAgents[agent.name] || false}
-                        onCheckedChange={(checked) => handleSelectDefaultAgent(agent.name, !!checked)}
-                        disabled={alreadyExists}
+                        checked={alreadyExists || (selectedDefaultAgents[agent.name] || false)}
+                        onCheckedChange={(checked) => {
+                           if (!alreadyExists) { // Only allow changing selection for agents not already owned
+                             handleSelectDefaultAgent(agent.name, !!checked);
+                           }
+                        }}
+                        disabled={alreadyExists || isAddingDefaults}
                         className="mt-1"
                       />
                       <div className="grid gap-1.5 leading-none">
@@ -303,9 +314,9 @@ export default function AgentsPage() {
                 <DialogClose asChild>
                   <Button type="button" variant="outline">Cancel</Button>
                 </DialogClose>
-                <Button 
-                    type="button" 
-                    onClick={handleAddSelectedDefaultAgents} 
+                <Button
+                    type="button"
+                    onClick={handleAddSelectedDefaultAgents}
                     disabled={isAddingDefaults || !anyNewAgentsSelected}
                 >
                   {isAddingDefaults ? (
@@ -362,9 +373,13 @@ export default function AgentsPage() {
                         <div key={`empty-${agent.name}`} className={`flex items-start space-x-3 p-3 border rounded-md ${alreadyExists ? 'bg-muted/50 opacity-70' : 'hover:bg-accent/50'}`}>
                         <Checkbox
                             id={`empty-select-agent-${agent.name.replace(/\s+/g, '-')}`}
-                            checked={alreadyExists || selectedDefaultAgents[agent.name] || false}
-                            onCheckedChange={(checked) => handleSelectDefaultAgent(agent.name, !!checked)}
-                            disabled={alreadyExists}
+                            checked={alreadyExists || (selectedDefaultAgents[agent.name] || false)}
+                            onCheckedChange={(checked) => {
+                               if (!alreadyExists) {
+                                 handleSelectDefaultAgent(agent.name, !!checked);
+                               }
+                            }}
+                            disabled={alreadyExists || isAddingDefaults}
                             className="mt-1"
                         />
                         <div className="grid gap-1.5 leading-none">
@@ -385,9 +400,9 @@ export default function AgentsPage() {
                   <DialogClose asChild>
                     <Button type="button" variant="outline">Cancel</Button>
                   </DialogClose>
-                  <Button 
-                    type="button" 
-                    onClick={handleAddSelectedDefaultAgents} 
+                  <Button
+                    type="button"
+                    onClick={handleAddSelectedDefaultAgents}
                     disabled={isAddingDefaults || !anyNewAgentsSelected}
                   >
                     {isAddingDefaults ? (
@@ -440,3 +455,5 @@ function AgentCardSkeleton() {
     </div>
   );
 }
+
+    
