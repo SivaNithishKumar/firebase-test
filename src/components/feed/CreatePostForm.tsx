@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -11,6 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormMessage } from "@/component
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { Loader2, ImagePlus, Send } from "lucide-react";
 
 const postSchema = z.object({
@@ -28,6 +30,7 @@ export function CreatePostForm({ onPostCreated }: CreatePostFormProps) {
   const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showImageUrlInput, setShowImageUrlInput] = useState(false);
+  const { toast } = useToast();
 
   const form = useForm<PostFormData>({
     resolver: zodResolver(postSchema),
@@ -37,12 +40,37 @@ export function CreatePostForm({ onPostCreated }: CreatePostFormProps) {
     },
   });
 
-  const onSubmit: SubmitHandler<PostFormData> = async (data) => {
-    setIsSubmitting(true);
-    await onPostCreated(data.content, data.imageUrl || undefined);
+  // Changed from async to sync for quicker UI feedback
+  const onSubmit: SubmitHandler<PostFormData> = (data) => {
+    setIsSubmitting(true); // Show spinner
+
+    // Initiate post creation but don't wait for its full completion here
+    // to make the UI responsive faster.
+    // onPostCreated will handle its own toasts for actual success/failure.
+    onPostCreated(data.content, data.imageUrl || undefined)
+      .catch((error) => {
+        // Errors should be handled within onPostCreated and shown via its toasts.
+        // This catch is a fallback if onPostCreated itself throws before its internal try/catch.
+        console.error("Error during post submission process:", error);
+        // Avoid duplicate error toasts if onPostCreated already showed one.
+        // toast({ title: "Submission Error", description: "Could not send post.", variant: "destructive" });
+      })
+      .finally(() => {
+        // This block ensures isSubmitting is false IF we decide to await again.
+        // For now, setIsSubmitting(false) is called immediately after initiating.
+      });
+
+    // Show an immediate toast that submission has started
+    toast({
+      title: "Submitting Post",
+      description: "Your post is being sent...",
+    });
+    
+    // Reset form and UI state immediately after *initiating* the post.
+    // The actual success/failure toast will come from onPostCreated.
     form.reset();
     setShowImageUrlInput(false);
-    setIsSubmitting(false);
+    setIsSubmitting(false); // Hide spinner quickly
   };
 
   if (!user) return null;
