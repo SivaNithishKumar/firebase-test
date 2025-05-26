@@ -1,8 +1,9 @@
+
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogIn, LogOut, UserPlus, Users, MessageSquare, Bot } from "lucide-react";
+import { LogIn, LogOut, UserPlus, Users, MessageSquare, Bot, UserCircle as UserIcon } from "lucide-react"; // Added UserIcon
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -90,10 +91,10 @@ export default function Header() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {/* <DropdownMenuItem onClick={() => router.push('/profile')}>
-                  <User className="mr-2 h-4 w-4" />
+                <DropdownMenuItem onClick={() => router.push('/profile')}>
+                  <UserIcon className="mr-2 h-4 w-4" />
                   Profile
-                </DropdownMenuItem> */}
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign Out
