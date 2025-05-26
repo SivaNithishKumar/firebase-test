@@ -12,7 +12,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, arrayUnion, arrayRemove, deleteDoc, collection, serverTimestamp, getDocs, query, where } from "firebase/firestore";
+import { doc, updateDoc, arrayUnion, arrayRemove, deleteDoc, collection, serverTimestamp, getDocs, query, where, type Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -32,6 +32,14 @@ interface PostCardProps {
   currentUser: UserProfile | null;
 }
 
+// Helper to convert Firestore Timestamp to number or return original if not a Timestamp
+const convertTimestamp = (timestampField: any): number | any => {
+    if (timestampField && typeof timestampField.toMillis === 'function') {
+      return timestampField.toMillis();
+    }
+    return timestampField;
+  };
+
 export function PostCard({ post, currentUser }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState("");
@@ -46,18 +54,18 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           const agentsQuery = query(collection(db, "agents"), where("userId", "==", currentUser.uid));
           const agentSnapshot = await getDocs(agentsQuery);
           const agentsData: Agent[] = [];
-          agentSnapshot.forEach(doc => {
-            const data = doc.data();
+          agentSnapshot.forEach(docSnap => { // Renamed to docSnap
+            const data = docSnap.data();
             agentsData.push({ 
-              id: doc.id, 
+              id: docSnap.id, 
               ...data,
-              createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : data.createdAt, // Ensure conversion
+              createdAt: convertTimestamp(data.createdAt),
             } as Agent);
           });
           setUserAgents(agentsData);
-        } catch (error) {
-          console.error("Error fetching user agents:", error);
-          // toast({ title: "Error fetching agents", description: "Could not load your AI agents.", variant: "destructive" });
+        } catch (error: any) {
+          console.error("Error fetching user agents for PostCard:", error);
+          toast({ title: "Error Fetching Agents", description: `Could not load your AI agents: ${error.message || 'Unknown error'}`, variant: "destructive" });
         }
       }
     };
@@ -77,63 +85,76 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       return;
     }
     if (userAgents.length === 0) {
-      toast({ title: "No Agents", description: "You need to create an AI agent first to perform reactions.", variant: "destructive" });
+      toast({ title: "No Agents Available", description: "You need to create an AI agent first to perform reactions.", variant: "destructive" });
       return;
     }
 
-    // For simplicity, pick the first agent. Could be a random one or user-selectable in a more complex UI.
     const reactingAgent = userAgents[0]; 
-
-    const reactionData: Omit<ReactionType, 'id' | 'createdAt'> & { createdAt: any } = {
-      agentId: reactingAgent.id,
-      agentName: reactingAgent.name,
-      type: reactionType,
-      createdAt: serverTimestamp(),
-    };
-    
-    const reactionForUnion = {
-        ...reactionData,
-        id: `${reactingAgent.id}-${Date.now()}`, 
-    };
-
     const postRef = doc(db, "posts", post.id);
+
     try {
-      const existingReaction = post.reactions?.find(r => r.agentId === reactionData.agentId && r.type === reactionData.type);
+      // Find if this agent already made this specific type of reaction
+      const existingReaction = post.reactions?.find(r => r.agentId === reactingAgent.id && r.type === reactionType);
+
       if (existingReaction) {
+        // Reaction exists, remove it
+        console.log(`Attempting to remove reaction for post ${post.id}:`, existingReaction);
         await updateDoc(postRef, {
           reactions: arrayRemove(existingReaction) 
         });
-        toast({ title: "Reaction removed", description: `${reactingAgent.name} removed their ${reactionType} reaction.` });
+        console.log("Reaction removed successfully.");
+        toast({ title: "Reaction Removed", description: `${reactingAgent.name} removed their ${reactionType} reaction.` });
       } else {
+        // Reaction doesn't exist, add it
+        const newReactionData = {
+          agentId: reactingAgent.id,
+          agentName: reactingAgent.name,
+          type: reactionType,
+          createdAt: serverTimestamp(),
+        };
+         const reactionForUnion = {
+            ...newReactionData,
+            id: `${reactingAgent.id}-${Date.now()}-${reactionType}`, // More unique client ID
+        };
+        console.log(`Attempting to add reaction for post ${post.id}:`, reactionForUnion);
         await updateDoc(postRef, {
           reactions: arrayUnion(reactionForUnion) 
         });
+        console.log("Reaction added successfully.");
         toast({ title: "Agent Reacted!", description: `${reactingAgent.name} reacted with ${reactionType}.` });
       }
-    } catch (error) {
-      console.error("Error reacting to post:", error);
-      toast({ title: "Reaction Error", description: "Could not process reaction.", variant: "destructive" });
+    } catch (error: any) {
+      console.error(`Error reacting to post ${post.id}:`, error);
+      toast({ title: "Reaction Error", description: `Could not process reaction: ${error.message || 'Unknown error'}`, variant: "destructive" });
     }
   };
 
-  const triggerAgentCommentResponse = async (currentPost: Post, lastUserCommentContent: string) => {
-    if (!currentUser || userAgents.length === 0) return;
+  const triggerAgentCommentResponse = async (currentPost: Post, triggeringUserCommentContent: string) => {
+    if (!currentUser || userAgents.length === 0) {
+        console.warn("triggerAgentCommentResponse: Current user or userAgents missing.");
+        return;
+    }
 
-    const respondingAgent = userAgents[Math.floor(Math.random() * userAgents.length)]; // Pick a random agent of the current user
+    const respondingAgent = userAgents[Math.floor(Math.random() * userAgents.length)]; 
+    console.log(`Agent ${respondingAgent.name} attempting to respond to comment on post ${currentPost.id}`);
 
     const existingCommentsStrings = (currentPost.comments || []).map(c => `${c.authorName}: ${c.content}`);
+    
+    // Include the triggering user comment in the context for the AI
+    const currentThreadForAI = [...existingCommentsStrings, `${currentUser.displayName || "User"}: ${triggeringUserCommentContent}`];
+
 
     const aiInput: VersatileResponseInput = {
-      postContent: currentPost.content,
-      authorName: currentUser.displayName || "User", // Agent is responding in context of user's comment
+      postContent: currentPost.content, // The original post content
+      authorName: currentUser.displayName || "User", // The author of the comment the agent is responding to
       agentPersona: respondingAgent.persona,
-      existingComments: existingCommentsStrings,
+      existingComments: currentThreadForAI,
     };
 
     try {
       const aiOutput: VersatileResponseOutput = await versatileResponse(aiInput);
       if (aiOutput.response) {
-        const agentCommentData: Omit<CommentType, 'id'|'createdAt'> & { createdAt: any } = {
+        const agentCommentData = {
           postId: currentPost.id,
           agentId: respondingAgent.id,
           authorName: respondingAgent.name,
@@ -143,18 +164,22 @@ export function PostCard({ post, currentUser }: PostCardProps) {
         };
         const agentCommentForUnion = {
             ...agentCommentData,
-            id: doc(collection(db, "dummy")).id, // Generate client-side unique ID
+            id: doc(collection(db, "dummy")).id, 
         };
-
+        
+        console.log(`Agent ${respondingAgent.name} attempting to add comment:`, agentCommentForUnion);
         const postRef = doc(db, "posts", currentPost.id);
         await updateDoc(postRef, {
           comments: arrayUnion(agentCommentForUnion)
         });
+        console.log(`Agent ${respondingAgent.name} successfully added comment.`);
         toast({ title: "Agent Responded", description: `${respondingAgent.name} added a comment.` });
+      } else {
+        console.log(`Agent ${respondingAgent.name} AI returned no response string.`);
       }
     } catch (error: any) {
-      console.error("Error generating or adding agent comment:", error);
-      toast({ title: "AI Comment Error", description: `Agent ${respondingAgent.name} failed to comment. ${error.message}`, variant: "destructive" });
+      console.error(`Error with agent ${respondingAgent.name} generating or adding comment:`, error);
+      toast({ title: "AI Comment Error", description: `Agent ${respondingAgent.name} failed to comment. ${error.message || 'Unknown error'}`, variant: "destructive" });
     }
   };
 
@@ -162,20 +187,19 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser) return;
     setIsCommenting(true);
-
     const submittedCommentContent = newComment; 
+    console.log(`User ${currentUser.uid} attempting to add comment to post ${post.id}: "${submittedCommentContent}"`);
 
-    const commentData: Omit<CommentType, 'id' | 'createdAt'> & { createdAt: any } = {
+    const userCommentData = {
       postId: post.id,
       userId: currentUser.uid,
       authorName: currentUser.displayName || "Anonymous User",
-      authorAvatarUrl: currentUser.photoURL,
+      authorAvatarUrl: currentUser.photoURL || null,
       content: submittedCommentContent,
       createdAt: serverTimestamp(), 
     };
-    
     const newCommentForUnion = { 
-        ...commentData, 
+        ...userCommentData, 
         id: doc(collection(db, "dummy")).id, 
     };
 
@@ -184,38 +208,46 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       await updateDoc(postRef, {
         comments: arrayUnion(newCommentForUnion) 
       });
+      console.log("User comment added successfully.");
       
-      setNewComment(""); // Clear input after successful submission
+      setNewComment(""); 
       toast({ title: "Comment Added", description: "Your comment has been posted." });
 
-      // Find the newly added comment in the local state or trigger a re-fetch/rely on onSnapshot to update `post`
-      // For simplicity, we pass the content directly. The AI will get the full comment list.
-      // Wait a bit for Firestore to likely update the main post data via onSnapshot before AI reads it
-      setTimeout(() => {
-         // Assuming `post` prop will be updated by parent's onSnapshot.
-         // A more robust way would be to refetch the post or pass the full updated comment list.
-         // For now, we'll rely on the `post` prop being reasonably up-to-date.
-        const updatedPost = { ...post, comments: [...(post.comments || []), newCommentForUnion as CommentType] };
-        triggerAgentCommentResponse(updatedPost, submittedCommentContent);
-      }, 1500);
+      // Create a representation of the post *as it would be* after this comment is added for the AI
+      // This avoids relying on onSnapshot to update the 'post' prop immediately for the AI call
+      const updatedPostForAI = {
+        ...post,
+        comments: [
+          ...(post.comments || []),
+          {
+            ...newCommentForUnion,
+            createdAt: Date.now() // Use client time for this temporary object for AI context
+          } as CommentType,
+        ],
+      };
+      triggerAgentCommentResponse(updatedPostForAI, submittedCommentContent);
 
-
-    } catch (error) {
-      console.error("Error adding comment:", error);
-      toast({ title: "Comment Error", description: "Could not post comment.", variant: "destructive" });
+    } catch (error: any) {
+      console.error(`Error adding user comment to post ${post.id}:`, error);
+      toast({ title: "Comment Error", description: `Could not post comment: ${error.message || 'Unknown error'}`, variant: "destructive" });
     } finally {
       setIsCommenting(false);
     }
   };
   
   const handleDeletePost = async () => {
-    if (!currentUser || currentUser.uid !== post.userId) return;
+    if (!currentUser || currentUser.uid !== post.userId) {
+        toast({ title: "Permission Denied", description: "You can only delete your own posts.", variant: "destructive" });
+        return;
+    }
+    console.log(`User ${currentUser.uid} attempting to delete post ${post.id}`);
     try {
       await deleteDoc(doc(db, "posts", post.id));
+      console.log(`Post ${post.id} deleted successfully.`);
       toast({ title: "Post Deleted", description: "Your post has been successfully removed." });
-    } catch (error) {
-      console.error("Error deleting post:", error);
-      toast({ title: "Delete Error", description: "Could not delete post.", variant: "destructive" });
+    } catch (error: any) {
+      console.error(`Error deleting post ${post.id}:`, error);
+      toast({ title: "Delete Error", description: `Could not delete post: ${error.message || 'Unknown error'}`, variant: "destructive" });
     }
   };
 
@@ -261,8 +293,8 @@ export function PostCard({ post, currentUser }: PostCardProps) {
             <Image
               src={post.imageUrl}
               alt="Post image"
-              fill // Changed from layout="fill" to fill for Next.js 13+ Image component
-              style={{objectFit: "cover"}} // Changed from objectFit="cover"
+              fill 
+              style={{objectFit: "cover"}} 
               className="bg-muted"
               data-ai-hint="social media image"
             />
@@ -271,26 +303,26 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       </CardContent>
       <CardFooter className="p-4 pt-2 flex-col items-start">
         {post.reactions && post.reactions.length > 0 && (
-          <div className="flex items-center space-x-2 mb-3">
-            {post.reactions.slice(0, 3).map(reaction => (
-              <div key={reaction.id || `${reaction.agentId}-${reaction.type}`} className="flex items-center p-1 bg-accent rounded-full text-accent-foreground text-xs" title={`${reaction.agentName} (${reaction.type})`}>
+          <div className="flex items-center space-x-2 mb-3 flex-wrap gap-y-1">
+            {post.reactions.slice(0, 5).map(reaction => ( // Show up to 5
+              <div key={reaction.id || `${reaction.agentId}-${reaction.type}-${reaction.createdAt}`} className="flex items-center p-1 bg-accent rounded-full text-accent-foreground text-xs" title={`${reaction.agentName} (${reaction.type})`}>
                  <Bot className="h-3 w-3 mr-1"/> {reaction.type}
               </div>
             ))}
-            {post.reactions.length > 3 && (
-              <span className="text-xs text-muted-foreground">+{post.reactions.length - 3} more</span>
+            {post.reactions.length > 5 && (
+              <span className="text-xs text-muted-foreground">+{post.reactions.length - 5} more</span>
             )}
           </div>
         )}
 
         <div className="flex w-full justify-around border-t pt-2">
-          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('like')}>
+          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('like')} disabled={userAgents.length === 0 && !!currentUser}>
             <ThumbsUp className="mr-2 h-4 w-4" /> Like
           </Button>
           <Button variant="ghost" className="flex-1" onClick={() => setShowComments(!showComments)}>
             <MessageCircle className="mr-2 h-4 w-4" /> Comment ({post.comments?.length || 0})
           </Button>
-          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('share')}>
+          <Button variant="ghost" className="flex-1" onClick={() => handleReaction('share')} disabled={userAgents.length === 0 && !!currentUser}>
             <Share2 className="mr-2 h-4 w-4" /> Share
           </Button>
         </div>

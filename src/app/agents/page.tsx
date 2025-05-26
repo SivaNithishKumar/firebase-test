@@ -14,6 +14,14 @@ import { collection, query, where, onSnapshot, orderBy, type Timestamp } from "f
 import { useToast } from "@/hooks/use-toast";
 import { PlusCircle, Users, Bot } from "lucide-react";
 
+// Helper to convert Firestore Timestamp to number or return original if not a Timestamp
+const convertTimestamp = (timestampField: any): number | any => {
+  if (timestampField && typeof timestampField.toMillis === 'function') {
+    return timestampField.toMillis();
+  }
+  return timestampField;
+};
+
 export default function AgentsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -38,13 +46,6 @@ export default function AgentsPage() {
         const agentsData: Agent[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-           // Helper to convert Firestore Timestamp to number or return original if not a Timestamp
-          const convertTimestamp = (timestampField: any): number | any => {
-            if (timestampField && typeof timestampField.toMillis === 'function') {
-              return timestampField.toMillis();
-            }
-            return timestampField;
-          };
           agentsData.push({ 
             id: doc.id, 
             ...data,
@@ -54,16 +55,15 @@ export default function AgentsPage() {
         setAgents(agentsData);
         setLoadingAgents(false);
       }, (error) => {
-        console.error("Error fetching agents:", error);
-        toast({ title: "Error fetching agents", description: error.message, variant: "destructive" });
+        console.error("Error fetching agents with onSnapshot:", error);
+        toast({ title: "Error Fetching Agents", description: `Snapshot error: ${error.message}`, variant: "destructive" });
         setLoadingAgents(false);
       });
       return () => unsubscribe();
     }
   }, [user, toast]);
 
-  if (authLoading || !user) {
-    // Skeleton for page header
+  if (authLoading || (!user && !authLoading)) {
     return (
       <div>
         <Skeleton className="h-10 w-1/2 mb-6" />
@@ -138,3 +138,4 @@ function AgentCardSkeleton() {
     </div>
   );
 }
+

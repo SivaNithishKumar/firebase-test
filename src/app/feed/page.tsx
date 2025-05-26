@@ -14,6 +14,14 @@ import { useToast } from "@/hooks/use-toast";
 import { BotMessageSquare, MessageSquarePlus } from "lucide-react";
 import { intelligentReaction, type IntelligentReactionInput, type IntelligentReactionOutput } from "@/ai/flows/intelligent-reaction";
 
+// Helper to convert Firestore Timestamp to number or return original if not a Timestamp
+const convertTimestamp = (timestampField: any): number | any => {
+  if (timestampField && typeof timestampField.toMillis === 'function') {
+    return timestampField.toMillis();
+  }
+  return timestampField;
+};
+
 export default function FeedPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -32,17 +40,10 @@ export default function FeedPage() {
       const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const postsData: Post[] = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          const convertTimestamp = (timestampField: any): number | any => {
-            if (timestampField && typeof timestampField.toMillis === 'function') {
-              return timestampField.toMillis();
-            }
-            return timestampField;
-          };
-
+        querySnapshot.forEach((docSnap) => { // Renamed to docSnap to avoid conflict
+          const data = docSnap.data();
           postsData.push({
-            id: doc.id,
+            id: docSnap.id,
             userId: data.userId,
             userDisplayName: data.userDisplayName,
             userAvatarUrl: data.userAvatarUrl,
@@ -56,8 +57,8 @@ export default function FeedPage() {
         setPosts(postsData);
         setLoadingPosts(false);
       }, (error) => {
-        console.error("Error fetching posts:", error);
-        toast({ title: "Error fetching posts", description: error.message, variant: "destructive" });
+        console.error("Error fetching posts with onSnapshot:", error);
+        toast({ title: "Error fetching posts", description: `Snapshot error: ${error.message}`, variant: "destructive" });
         setLoadingPosts(false);
       });
       return () => unsubscribe();
@@ -65,19 +66,27 @@ export default function FeedPage() {
   }, [user, toast]);
 
   const triggerAgentReactionsToNewPost = async (newPostId: string, postContent: string, postUserId: string) => {
-    if (!postUserId) return;
+    if (!postUserId) {
+      console.warn("triggerAgentReactionsToNewPost: postUserId is missing.");
+      return;
+    }
 
+    console.log(`Triggering agent reactions for new post ID: ${newPostId}`);
     try {
       const agentsQuery = query(collection(db, "agents"), where("userId", "==", postUserId));
       const agentSnapshot = await getDocs(agentsQuery);
       const agents: Agent[] = [];
-      agentSnapshot.forEach(doc => agents.push({ id: doc.id, ...doc.data() } as Agent));
+      agentSnapshot.forEach(docSnap => agents.push({ id: docSnap.id, ...docSnap.data(), createdAt: convertTimestamp(docSnap.data().createdAt) } as Agent));
 
-      if (agents.length === 0) return;
+      if (agents.length === 0) {
+        console.log("No agents found for user to react to post.");
+        return;
+      }
 
       const postRef = doc(db, "posts", newPostId);
 
       for (const agent of agents) {
+        console.log(`Processing reaction for agent: ${agent.name}`);
         try {
           const reactionInput: IntelligentReactionInput = {
             postContent: postContent,
@@ -86,31 +95,34 @@ export default function FeedPage() {
           const reactionOutput: IntelligentReactionOutput = await intelligentReaction(reactionInput);
 
           if (reactionOutput.shouldReact && reactionOutput.reactionType) {
-            const newReaction: Omit<ReactionType, 'id' | 'createdAt'> & { createdAt: any } = {
+            const newReactionData = { // Data to be stored
               agentId: agent.id,
               agentName: agent.name,
               type: reactionOutput.reactionType,
-              createdAt: serverTimestamp(),
+              createdAt: serverTimestamp(), // Server-side timestamp
             };
-             // Create a version with a client-side ID for arrayUnion, actual ID not critical for reactions here
-            const reactionForUnion = {
-              ...newReaction,
-              id: `${agent.id}-${Date.now()}`
+            const reactionForUnion = { // Object for arrayUnion, includes client-generated ID
+                ...newReactionData,
+                id: `${agent.id}-${Date.now()}-${reactionOutput.reactionType}` // More unique client ID
             };
-
+            
+            console.log(`Agent ${agent.name} attempting to add reaction:`, reactionForUnion);
             await updateDoc(postRef, {
               reactions: arrayUnion(reactionForUnion)
             });
+            console.log(`Agent ${agent.name} successfully added reaction.`);
             toast({ title: "Agent Reaction", description: `${agent.name} reacted: ${reactionOutput.reactionType}` });
+          } else {
+            console.log(`Agent ${agent.name} decided not to react or reactionType missing.`);
           }
         } catch (aiError: any) {
-          console.error(`Error with agent ${agent.name} reacting:`, aiError);
-          toast({ title: "AI Reaction Error", description: `Agent ${agent.name} failed to react. ${aiError.message}`, variant: "destructive" });
+          console.error(`Error with agent ${agent.name} reacting to post ${newPostId}:`, aiError);
+          toast({ title: "AI Reaction Error", description: `Agent ${agent.name} failed to react. ${aiError.message || 'Unknown error'}`, variant: "destructive" });
         }
       }
     } catch (error: any) {
-      console.error("Error fetching agents for reaction:", error);
-      toast({ title: "Agent Reaction Setup Error", description: error.message, variant: "destructive" });
+      console.error(`Error fetching agents for reaction to post ${newPostId}:`, error);
+      toast({ title: "Agent Reaction Setup Error", description: `Fetching agents failed: ${error.message || 'Unknown error'}`, variant: "destructive" });
     }
   };
 
@@ -120,30 +132,32 @@ export default function FeedPage() {
       toast({ title: "Authentication Error", description: "You must be logged in to post.", variant: "destructive" });
       return;
     }
+    console.log("Attempting to create post by user:", user.uid);
     try {
       const newPostData = {
         userId: user.uid,
-        userDisplayName: user.displayName,
-        userAvatarUrl: user.photoURL,
+        userDisplayName: user.displayName || "Anonymous User",
+        userAvatarUrl: user.photoURL || null,
         content,
         imageUrl: imageUrl || null,
         createdAt: serverTimestamp(),
         reactions: [],
         comments: [],
       };
+      console.log("New post data:", newPostData);
       const docRef = await addDoc(collection(db, "posts"), newPostData);
+      console.log("Post created successfully with ID:", docRef.id);
       toast({ title: "Post Created!", description: "Your post is now live on the feed." });
       
-      // Trigger AI agent reactions
       await triggerAgentReactionsToNewPost(docRef.id, content, user.uid);
 
     } catch (error: any) {
-      console.error("Error creating post:", error);
-      toast({ title: "Error creating post", description: error.message, variant: "destructive" });
+      console.error("Error creating post in Firestore:", error);
+      toast({ title: "Error Creating Post", description: `Firestore error: ${error.message || 'Unknown error'}`, variant: "destructive" });
     }
   };
 
-  if (authLoading || !user) {
+  if (authLoading || (!user && !authLoading)) { // Show skeletons if auth is loading OR if not loading and no user (before redirect)
     return (
       <div className="space-y-6">
         <Skeleton className="h-32 w-full rounded-lg" />
