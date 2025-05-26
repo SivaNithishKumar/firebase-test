@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogIn, LogOut, UserPlus, Users, MessageSquare, Bot, UserCircle as UserIcon } from "lucide-react"; // Added UserIcon
+import { LogIn, LogOut, UserPlus, Users, MessageSquare, Bot, UserCircle as UserIcon, UserSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -49,17 +49,22 @@ export default function Header() {
             PersonaNet
           </span>
         </Link>
-        <nav className="flex items-center gap-4">
+        <nav className="flex items-center gap-2 sm:gap-4">
           {user && (
             <>
-              <Button variant="ghost" asChild>
+              <Button variant="ghost" asChild className="hidden sm:inline-flex">
                 <Link href="/feed">
                   <MessageSquare className="mr-2 h-4 w-4" /> Feed
                 </Link>
               </Button>
-              <Button variant="ghost" asChild>
+              <Button variant="ghost" asChild className="hidden sm:inline-flex">
                 <Link href="/agents">
                   <Users className="mr-2 h-4 w-4" /> Agents
+                </Link>
+              </Button>
+              <Button variant="ghost" asChild className="hidden sm:inline-flex">
+                <Link href="/users">
+                  <UserSearch className="mr-2 h-4 w-4" /> Find Users
                 </Link>
               </Button>
             </>
@@ -91,10 +96,20 @@ export default function Header() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                 <DropdownMenuItem onClick={() => router.push('/feed')} className="sm:hidden">
+                  <MessageSquare className="mr-2 h-4 w-4" /> Feed
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/agents')} className="sm:hidden">
+                  <Users className="mr-2 h-4 w-4" /> Agents
+                </DropdownMenuItem>
+                 <DropdownMenuItem onClick={() => router.push('/users')} className="sm:hidden">
+                  <UserSearch className="mr-2 h-4 w-4" /> Find Users
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/profile')}>
                   <UserIcon className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>
+                <DropdownMenuSeparator className="sm:hidden"/>
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign Out

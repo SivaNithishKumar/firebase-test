@@ -1,16 +1,18 @@
+
 "use client";
 
-import { z } from "zod"; // Added missing import
+import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  updateProfile,
+  updateProfile as updateFirebaseProfile, // Renamed to avoid conflict
 } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase"; // Added db
+import { doc, setDoc, serverTimestamp } from "firebase/firestore"; // Added Firestore imports
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -25,6 +27,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import type { AppUserProfile } from "@/types";
 
 const commonSchema = {
   email: z.string().email({ message: "Invalid email address." }),
@@ -32,7 +35,7 @@ const commonSchema = {
 };
 
 const signupSchema = z.object({
-  displayName: z.string().min(2, { message: "Display name must be at least 2 characters." }),
+  displayName: z.string().min(2, { message: "Display name must be at least 2 characters." }).max(50, "Display name max 50 chars."),
   ...commonSchema,
 });
 
@@ -69,11 +72,29 @@ export default function AuthForm({ mode }: AuthFormProps) {
           signupValues.email,
           signupValues.password
         );
-        await updateProfile(userCredential.user, {
+        
+        // Update Firebase Auth profile
+        await updateFirebaseProfile(userCredential.user, {
           displayName: signupValues.displayName,
+          // You could add photoURL here if you collect it during signup
         });
-        toast({ title: "Account created successfully!", description: "You are now logged in." });
+
+        // Create a user profile document in Firestore
+        const userProfileData: AppUserProfile = {
+          uid: userCredential.user.uid,
+          displayName: signupValues.displayName,
+          email: userCredential.user.email,
+          photoURL: userCredential.user.photoURL,
+          createdAt: Date.now(), // Using client timestamp for simplicity, serverTimestamp for top-level field
+          friends: [],
+        };
+        const userProfileRef = doc(db, "userProfiles", userCredential.user.uid);
+        await setDoc(userProfileRef, { ...userProfileData, createdAt: serverTimestamp() }); // Ensure createdAt is server time
+        
+        console.log("User profile created in Firestore for UID:", userCredential.user.uid);
+        toast({ title: "Account created successfully!", description: "You are now logged in and your profile is set up." });
         router.push("/feed");
+
       } else {
         await signInWithEmailAndPassword(auth, values.email, values.password);
         toast({ title: "Logged in successfully!", description: "Welcome back." });

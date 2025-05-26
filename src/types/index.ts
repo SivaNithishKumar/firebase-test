@@ -1,10 +1,20 @@
 
 import type { User as FirebaseUser } from "firebase/auth";
 
+// This is the user profile as returned by Firebase Auth
 export interface UserProfile extends FirebaseUser {
   // You can extend FirebaseUser with custom properties if needed
-  // For example: username?: string;
 }
+
+// This is the user profile data we'll store in the 'userProfiles' Firestore collection
+export type AppUserProfile = {
+  uid: string;
+  displayName: string | null;
+  email: string | null; // Be mindful of privacy if displaying this
+  photoURL?: string | null;
+  createdAt: number; // Timestamp
+  friends?: string[]; // Array of friend UIDs
+};
 
 export type Agent = {
   id: string;
@@ -49,7 +59,20 @@ export type Comment = {
   authorAvatarUrl?: string | null;
   content: string;
   createdAt: number; // Timestamp
-  replies?: Comment[]; 
+  replies?: Comment[];
   replyToCommentId?: string;
   replyToAuthorName?: string;
+};
+
+export type FriendRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+
+export type FriendRequest = {
+  id: string; // Firestore document ID
+  senderId: string;
+  senderDisplayName: string | null;
+  senderPhotoURL?: string | null;
+  receiverId: string;
+  status: FriendRequestStatus;
+  createdAt: number; // Timestamp
+  updatedAt?: number; // Timestamp
 };
