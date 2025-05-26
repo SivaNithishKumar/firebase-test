@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link"; // Import Link
+import Link from "next/link"; 
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -24,11 +24,19 @@ const convertAppUserProfileTimestamp = (profile: any): AppUserProfile => {
 };
 
 const convertFriendRequestTimestamp = (req: any): FriendRequest => {
-    return {
+    const convertedReq = {
         ...req,
         createdAt: req.createdAt instanceof Timestamp ? req.createdAt.toMillis() : req.createdAt,
         updatedAt: req.updatedAt instanceof Timestamp ? req.updatedAt.toMillis() : req.updatedAt,
-    } as FriendRequest;
+    };
+    // Ensure createdAt and updatedAt are numbers, default to Date.now() if missing after potential conversion
+    if (typeof convertedReq.createdAt !== 'number') {
+        convertedReq.createdAt = Date.now();
+    }
+    if (typeof convertedReq.updatedAt !== 'number') {
+        convertedReq.updatedAt = Date.now();
+    }
+    return convertedReq as FriendRequest;
 }
 
 export default function ProfilePage() {
@@ -52,14 +60,12 @@ export default function ProfilePage() {
       const fetchProfileData = async () => {
         setLoadingProfile(true);
         try {
-          // Fetch AppUserProfile
           const profileRef = doc(db, "userProfiles", user.uid);
           const profileSnap = await getDoc(profileRef);
           if (profileSnap.exists()) {
             const userProfileData = convertAppUserProfileTimestamp(profileSnap.data());
             setProfile(userProfileData);
 
-            // Fetch Friends' Profiles
             if (userProfileData.friends && userProfileData.friends.length > 0) {
               const friendPromises = userProfileData.friends.map(friendId => getDoc(doc(db, "userProfiles", friendId)));
               const friendDocs = await Promise.all(friendPromises);
@@ -72,10 +78,8 @@ export default function ProfilePage() {
             }
           } else {
             console.warn("User profile not found in Firestore for UID:", user.uid);
-            // Potentially create it here if it's missing, or handle as an error
           }
 
-          // Fetch Incoming Friend Requests
           const requestsQuery = query(
             collection(db, "friendRequests"),
             where("receiverId", "==", user.uid),
@@ -88,8 +92,9 @@ export default function ProfilePage() {
         } catch (error: any) {
           console.error("Error fetching profile data:", error);
           toast({ title: "Error", description: `Could not load profile: ${error.message}`, variant: "destructive" });
+        } finally {
+            setLoadingProfile(false);
         }
-        setLoadingProfile(false);
       };
       fetchProfileData();
     }
@@ -100,29 +105,20 @@ export default function ProfilePage() {
     setProcessingRequestId(request.id);
     try {
       const batch = writeBatch(db);
-
-      // Update friend request status
       const requestRef = doc(db, "friendRequests", request.id);
       batch.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
-
-      // Add to current user's friends list
       const currentUserProfileRef = doc(db, "userProfiles", user.uid);
       batch.update(currentUserProfileRef, { friends: arrayUnion(request.senderId) });
-
-      // Add to sender's friends list
       const senderProfileRef = doc(db, "userProfiles", request.senderId);
       batch.update(senderProfileRef, { friends: arrayUnion(user.uid) });
-
       await batch.commit();
 
       toast({ title: "Friend Request Accepted", description: `You are now friends with ${request.senderDisplayName}.` });
       setFriendRequests(prev => prev.filter(r => r.id !== request.id));
-      // Add to local friends state for immediate UI update
       const senderProfileSnap = await getDoc(senderProfileRef);
       if(senderProfileSnap.exists()) {
         setFriends(prev => [...prev, convertAppUserProfileTimestamp(senderProfileSnap.data() as AppUserProfile)]);
       }
-      // Update current user profile friends list locally
       setProfile(prev => prev ? ({ ...prev, friends: [...(prev.friends || []), request.senderId] }) : null);
 
     } catch (error: any) {
@@ -138,11 +134,7 @@ export default function ProfilePage() {
     setProcessingRequestId(request.id);
     try {
       const requestRef = doc(db, "friendRequests", request.id);
-      // Option 1: Update status to 'declined'
       await updateDoc(requestRef, { status: "declined", updatedAt: serverTimestamp() });
-      // Option 2: Delete the request document
-      // await deleteDoc(requestRef); 
-
       toast({ title: "Friend Request Declined", description: `Request from ${request.senderDisplayName} declined.` });
       setFriendRequests(prev => prev.filter(r => r.id !== request.id));
     } catch (error: any) {
@@ -155,21 +147,13 @@ export default function ProfilePage() {
   
   const handleUnfriend = async (friendId: string) => {
     if (!user || !profile) return;
-    setProcessingRequestId(friendId); // Use friendId as a temporary processing ID for unfriend operations
+    setProcessingRequestId(friendId);
     try {
         const batch = writeBatch(db);
-
-        // Remove friend from current user's list
         const currentUserProfileRef = doc(db, "userProfiles", user.uid);
         batch.update(currentUserProfileRef, { friends: arrayRemove(friendId) });
-
-        // Remove current user from friend's list
         const friendProfileRef = doc(db, "userProfiles", friendId);
         batch.update(friendProfileRef, { friends: arrayRemove(user.uid) });
-        
-        // Optionally, update/delete any existing 'accepted' friend request document between them
-        // For simplicity, we'll skip this for now, but in a full system, you might want to clean it up.
-
         await batch.commit();
         
         const unfriendedUser = friends.find(f => f.uid === friendId);
@@ -185,7 +169,6 @@ export default function ProfilePage() {
     }
   };
 
-
   const getInitials = (name?: string | null) => {
     if (!name) return "PN";
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().substring(0, 2);
@@ -194,7 +177,6 @@ export default function ProfilePage() {
   const creationDate = profile?.createdAt
     ? format(new Date(profile.createdAt), "MMMM d, yyyy")
     : (user?.metadata.creationTime ? format(new Date(user.metadata.creationTime), "MMMM d, yyyy") : "N/A");
-
 
   if (authLoading || loadingProfile || (!user && !authLoading)) {
     return (
@@ -230,7 +212,6 @@ export default function ProfilePage() {
     return <div className="text-center">User profile not found. It might be still creating or an error occurred.</div>;
   }
 
-
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       <div className="flex items-center gap-2 mb-4">
@@ -265,7 +246,6 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Friend Requests Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><UserPlus className="h-6 w-6"/>Incoming Friend Requests</CardTitle>
@@ -313,7 +293,6 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Friends List Section */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Users className="h-6 w-6"/>Your Friends</CardTitle>
@@ -321,7 +300,7 @@ export default function ProfilePage() {
         <CardContent>
           {loadingProfile && <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />}
           {!loadingProfile && friends.length === 0 && (
-            <p className="text-muted-foreground text-sm">You haven't added any friends yet. Go to the <Link href="/friends" className="text-primary hover:underline">Find Friends</Link> page to connect!</p>
+            <p className="text-muted-foreground text-sm">You haven't added any friends yet. Go to the <Link href="/friends" className="text-primary hover:underline">Friends</Link> page to connect!</p>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {friends.map(friend => (
@@ -354,5 +333,6 @@ export default function ProfilePage() {
     </div>
   );
 }
+    
 
     

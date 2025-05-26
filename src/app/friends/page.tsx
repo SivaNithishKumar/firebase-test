@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
@@ -22,10 +22,11 @@ import {
 import type { AppUserProfile, FriendRequest } from "@/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { UserPlus, CheckCircle, Clock, Loader2, UserSearch } from "lucide-react";
+import { UserPlus, CheckCircle, Clock, Loader2, Users as FriendsIcon, Search } from "lucide-react"; // Changed icon
 
 const convertAppUserProfileTimestamp = (profile: any): AppUserProfile => {
     return {
@@ -34,15 +35,16 @@ const convertAppUserProfileTimestamp = (profile: any): AppUserProfile => {
     } as AppUserProfile;
 };
 
-export default function FindFriendsPage() {
+export default function FriendsPage() { // Renamed component
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const [users, setUsers] = useState<AppUserProfile[]>([]);
+  const [allUsers, setAllUsers] = useState<AppUserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [currentUserProfile, setCurrentUserProfile] = useState<AppUserProfile | null>(null);
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
   const [requestStatus, setRequestStatus] = useState<Record<string, 'sending' | 'sent' | 'error'>>({});
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -55,20 +57,18 @@ export default function FindFriendsPage() {
       const fetchUsersAndProfile = async () => {
         setLoadingUsers(true);
         try {
-          // Fetch current user's profile to get their friends list
           const userProfileRef = doc(db, "userProfiles", user.uid);
           const userProfileSnap = await getDoc(userProfileRef);
           if (userProfileSnap.exists()) {
             setCurrentUserProfile(convertAppUserProfileTimestamp(userProfileSnap.data()));
           }
 
-          // Fetch all users (excluding current user)
-          const usersQuery = query(collection(db, "userProfiles"), where("uid", "!=", user.uid), limit(50)); // Limit for now
+          const usersQuery = query(collection(db, "userProfiles"), where("uid", "!=", user.uid), limit(50));
           const usersSnapshot = await getDocs(usersQuery);
           const usersData = usersSnapshot.docs.map(docSnap => convertAppUserProfileTimestamp(docSnap.data()));
-          setUsers(usersData);
+          console.log("Fetched users data count:", usersData.length); // Debug log
+          setAllUsers(usersData);
 
-          // Fetch pending friend requests initiated by the current user OR to the current user
           const outgoingRequestsQuery = query(
             collection(db, "friendRequests"),
             where("senderId", "==", user.uid),
@@ -85,20 +85,30 @@ export default function FindFriendsPage() {
             getDocs(incomingRequestsQuery)
           ]);
 
-          const allPendingRequests: FriendRequest[] = [];
-          outgoingSnapshot.forEach(docSnap => allPendingRequests.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
-          incomingSnapshot.forEach(docSnap => allPendingRequests.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
-          setPendingRequests(allPendingRequests);
+          const allPendingRequestsData: FriendRequest[] = [];
+          outgoingSnapshot.forEach(docSnap => allPendingRequestsData.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
+          incomingSnapshot.forEach(docSnap => allPendingRequestsData.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
+          setPendingRequests(allPendingRequestsData);
 
         } catch (error: any) {
           console.error("Error fetching users or profile:", error);
           toast({ title: "Error", description: `Could not load users: ${error.message}`, variant: "destructive" });
+        } finally {
+            setLoadingUsers(false);
         }
-        setLoadingUsers(false);
       };
       fetchUsersAndProfile();
     }
   }, [user, toast]);
+
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm) {
+      return allUsers;
+    }
+    return allUsers.filter(u => 
+      u.displayName?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [allUsers, searchTerm]);
 
   const getInitials = (name?: string | null) => {
     if (!name) return "??";
@@ -111,7 +121,6 @@ export default function FindFriendsPage() {
     setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sending' }));
 
     try {
-      // Check if a request already exists (either direction) or if they are already friends
       const existingRequestQuery1 = query(collection(db, "friendRequests"), 
         where("senderId", "==", user.uid), 
         where("receiverId", "==", targetUser.uid));
@@ -123,14 +132,15 @@ export default function FindFriendsPage() {
       
       if (!snap1.empty || !snap2.empty) {
          toast({ title: "Request Exists", description: "A friend request already exists or was handled.", variant: "default" });
-         setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' })); // Or some other status
-         // Refresh pending requests to update UI state correctly
+         setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
          const existingReqDoc = snap1.docs[0] || snap2.docs[0];
          if (existingReqDoc) {
             const existingReqData = existingReqDoc.data() as Omit<FriendRequest, "id">;
              setPendingRequests(prev => [...prev.filter(r => !(r.senderId === user.uid && r.receiverId === targetUser.uid) && !(r.senderId === targetUser.uid && r.receiverId === user.uid) ), { 
                 id: existingReqDoc.id, 
-                ...existingReqData
+                ...existingReqData,
+                createdAt: existingReqData.createdAt || Date.now(), // Ensure createdAt is a number
+                updatedAt: existingReqData.updatedAt || Date.now()  // Ensure updatedAt is a number
               }]);
          }
          return;
@@ -139,7 +149,6 @@ export default function FindFriendsPage() {
         toast({ title: "Already Friends", description: `You are already friends with ${targetUser.displayName}.`, variant: "default" });
         return;
       }
-
 
       const newRequest: Omit<FriendRequest, "id"> = {
         senderId: user.uid,
@@ -188,7 +197,6 @@ export default function FindFriendsPage() {
     return { text: "Send Friend Request", disabled: false, icon: <UserPlus className="mr-2" /> };
   };
 
-
   if (authLoading || (!user && !authLoading)) {
     return (
       <div className="space-y-6">
@@ -199,12 +207,16 @@ export default function FindFriendsPage() {
     );
   }
   
-  if (loadingUsers) {
+  if (loadingUsers && !currentUserProfile) { // Show skeletons if loading initial profile too
      return (
       <div className="space-y-6">
         <div className="flex items-center gap-2">
-          <UserSearch className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold tracking-tight">Find Friends</h1>
+          <FriendsIcon className="h-8 w-8 text-primary" />
+          <h1 className="text-3xl font-bold tracking-tight">Friends</h1>
+        </div>
+        <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Skeleton className="h-10 w-full pl-10" />
         </div>
         {[1,2,3].map(i => (
             <Card key={i} className="p-4">
@@ -224,15 +236,47 @@ export default function FindFriendsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div className="flex items-center gap-2 mb-6">
-        <UserSearch className="h-8 w-8 text-primary" />
-        <h1 className="text-3xl font-bold tracking-tight">Find Friends</h1>
+      <div className="flex items-center gap-2 mb-4">
+        <FriendsIcon className="h-8 w-8 text-primary" />
+        <h1 className="text-3xl font-bold tracking-tight">Friends</h1>
       </div>
-      {users.length === 0 && !loadingUsers && (
-        <p className="text-muted-foreground text-center">No other users found to connect with yet.</p>
+
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+        <Input
+            type="search"
+            placeholder="Search for users by name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+        />
+      </div>
+
+      {loadingUsers && filteredUsers.length === 0 && (
+         <div className="space-y-4">
+            {[1,2,3].map(i => (
+                <Card key={`skel-${i}`} className="p-4">
+                    <div className="flex items-center space-x-4">
+                        <Skeleton className="h-12 w-12 rounded-full" />
+                        <div className="space-y-2">
+                            <Skeleton className="h-4 w-[200px]" />
+                            <Skeleton className="h-3 w-[150px]" />
+                        </div>
+                        <Skeleton className="h-10 w-36 ml-auto" />
+                    </div>
+                </Card>
+            ))}
+         </div>
       )}
+      
+      {!loadingUsers && filteredUsers.length === 0 && (
+        <p className="text-muted-foreground text-center py-8">
+            {searchTerm ? `No users found matching "${searchTerm}".` : "No other users found to connect with yet."}
+        </p>
+      )}
+
       <div className="space-y-4">
-        {users.map((u) => {
+        {filteredUsers.map((u) => {
           const buttonState = getButtonState(u.uid);
           return (
             <Card key={u.uid} className="p-4 shadow-sm">
@@ -264,5 +308,6 @@ export default function FindFriendsPage() {
     </div>
   );
 }
+    
 
     

@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogIn, LogOut, UserPlus, Users, MessageSquare, Bot, UserCircle as UserIcon, UserSearch } from "lucide-react";
+import { LogIn, LogOut, UserPlus, Users, MessageSquare, Bot, UserCircle as UserIcon, UserSearch, Users2 } from "lucide-react"; // Added Users2 for Friends
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -64,7 +64,7 @@ export default function Header() {
               </Button>
               <Button variant="ghost" asChild className="hidden sm:inline-flex">
                 <Link href="/friends">
-                  <UserSearch className="mr-2 h-4 w-4" /> Find Friends
+                  <Users2 className="mr-2 h-4 w-4" /> Friends 
                 </Link>
               </Button>
             </>
@@ -103,7 +103,7 @@ export default function Header() {
                   <Users className="mr-2 h-4 w-4" /> Agents
                 </DropdownMenuItem>
                  <DropdownMenuItem onClick={() => router.push('/friends')} className="sm:hidden">
-                  <UserSearch className="mr-2 h-4 w-4" /> Find Friends
+                  <Users2 className="mr-2 h-4 w-4" /> Friends
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/profile')}>
                   <UserIcon className="mr-2 h-4 w-4" />
@@ -135,5 +135,6 @@ export default function Header() {
     </header>
   );
 }
+    
 
     
