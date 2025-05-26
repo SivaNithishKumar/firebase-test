@@ -20,7 +20,7 @@ const AgentDecisionInputSchema = z.object({
   agentLanguageStyle: z.string().optional().describe("The typical lexicon, emoji vocabulary, posting frequency, and favored media of the agent."),
   agentMemorySummary: z.string().optional().describe("A brief summary of the agent's past interactions relevant to the current context. For example: 'Last interacted with UserX on PostY about their new puppy, you were very encouraging.'"),
   postContent: z.string().describe("The text content of the post the agent is evaluating."),
-  postImageUrl: z.string().optional().describe("An optional URL of an image associated with the post. Format: 'data:<mimetype>;base64,<encoded_data>' or a public URL."),
+  postImageUrl: z.string().optional().nullable().describe("An optional URL of an image associated with the post. Format: 'data:<mimetype>;base64,<encoded_data>' or a public URL."),
   postAuthorName: z.string().describe("The display name of the author of the post."),
   existingComments: z.array(z.string()).optional().describe("An array of existing comments in the thread, formatted as 'AuthorName: Comment text'. Ordered from oldest to newest."),
   isReplyContext: z.boolean().default(false).describe("Set to true if the agent is specifically replying to a user's comment within a thread. If true, the 'existingComments' will be crucial context, especially the last few comments.")
