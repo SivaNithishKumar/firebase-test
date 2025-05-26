@@ -3,7 +3,7 @@
 /**
  * @fileOverview A Genkit flow for AI agents to make complex decisions on how to interact with social media content.
  *
- * - agentDecisionFlow - The main flow function.
+ * - agentDecision - The main flow function.
  * - AgentDecisionInput - Input type for the flow.
  * - AgentDecisionOutput - Output type for the flow.
  */
@@ -22,8 +22,8 @@ const AgentDecisionInputSchema = z.object({
   postContent: z.string().describe("The text content of the post the agent is evaluating."),
   postImageUrl: z.string().optional().nullable().describe("An optional URL of an image associated with the post. Format: 'data:<mimetype>;base64,<encoded_data>' or a public URL."),
   postAuthorName: z.string().describe("The display name of the author of the post."),
-  existingComments: z.array(z.string()).optional().describe("An array of existing comments in the thread, formatted as 'AuthorName: Comment text'. Ordered from oldest to newest. Pay attention to @mentions."),
-  isReplyContext: z.boolean().default(false).describe("Set to true if the agent is specifically replying to a user's comment within a thread. If true, the 'existingComments' will be crucial context, especially the last few comments. Check if @YourAgentName is mentioned in the recent comments, indicating you've been tagged.")
+  existingComments: z.array(z.string()).optional().describe("An array of existing comments in the thread, formatted as 'AuthorName: Comment text'. Ordered from oldest to newest. Pay attention to @mentions like '@{{agentName}}' if they appear, as it means you are being directly addressed."),
+  isReplyContext: z.boolean().default(false).describe("Set to true if the agent is specifically replying to a user's comment within a thread. If true, the 'existingComments' will be crucial context, especially the last few comments. Check if @{{agentName}} is mentioned in the recent comments, indicating you've been tagged.")
 });
 export type AgentDecisionInput = z.infer<typeof AgentDecisionInputSchema>;
 
@@ -33,15 +33,15 @@ const AgentDecisionOutputSchema = z.object({
   reactionType: z.string().optional()
     .describe("If decision involves reacting, a SINGLE-WORD reaction type (e.g., 'like', 'love', 'haha', 'wow', 'sad', 'angry', 'support', 'celebrate', 'insightful', 'curious'). MUST be one word from these examples if provided."),
   commentText: z.string().optional()
-    .describe("If decision involves commenting, the text of the comment. Should be in character for the agent. Max 1-3 sentences typically. If replying or tagged, make sure to address the relevant user/agent (e.g. start with @Username)."),
+    .describe("If decision involves commenting, the text of the comment. Should be in character for the agent. Max 1-3 sentences typically. If replying or tagged (e.g., @{{agentName}} was in the thread), make sure to address the relevant user/agent (e.g. start with @Username)."),
   updatedMemorySummary: z.string().optional()
-    .describe("A new, brief summary of this interaction to be stored for the agent's future reference. E.g., 'Commented on UserX's travel post, expressing excitement.' or 'Replied to @UserY's question about my backstory.'")
+    .describe("A new, brief summary of this interaction to be stored for the agent's future reference. E.g., 'Commented on UserX's travel post, expressing excitement.' or 'Replied to @UserY's question about my backstory after they tagged me.'")
 });
 export type AgentDecisionOutput = z.infer<typeof AgentDecisionOutputSchema>;
 
 export async function agentDecision(input: AgentDecisionInput): Promise<AgentDecisionOutput> {
   console.log(`[agentDecisionFlow] Input for ${input.agentName}:`, JSON.stringify(input, null, 2));
-  const output = await agentDecisionFlow(input);
+  const output = await agentDecisionFlowInternal(input); 
   console.log(`[agentDecisionFlow] Output for ${input.agentName}:`, JSON.stringify(output, null, 2));
   return output;
 }
@@ -75,7 +75,7 @@ Current comment thread (most recent comment is last):
 {{/each}}
 {{#if isReplyContext}}
 You are specifically crafting a reply. Your comment should make sense as a response to the recent comments in the thread.
-If the last comment is directed at you (e.g., mentions "@{{agentName}}"), you should strongly consider replying. Your reply should address them.
+If the last comment, or any recent comment, explicitly mentions "@{{agentName}}", you are being directly addressed/tagged. You should strongly consider replying, and your reply should acknowledge the tag and address the person who tagged you (e.g., start with "@TheirName...").
 {{else}}
 You are considering making an initial comment on the post, or reacting to it.
 {{/if}}
@@ -83,7 +83,7 @@ You are considering making an initial comment on the post, or reacting to it.
 There are no comments on this post yet. You might be the first to comment.
 {{/if}}
 
-Based on your complete identity (persona, archetype, backstory, language style, memories) and the provided context (post content, image, existing comments, and whether you are replying or have been tagged), you must decide how to interact.
+Based on your complete identity (persona, archetype, backstory, language style, memories) and the provided context (post content, image, existing comments, and whether you are replying or have been tagged like "@{{agentName}}"), you must decide how to interact.
 Your decision can be one of:
 - SKIP: You choose not to interact with this post/comment at all.
 - REACT_ONLY: You choose only to add a standard reaction (like "like", "love", etc.).
@@ -98,24 +98,25 @@ If you decide to REACT_ONLY or REACT_AND_COMMENT:
 
 If you decide to COMMENT_ONLY or REACT_AND_COMMENT:
 - "commentText" MUST be your textual response, in character, appropriate for social media (typically 1-3 sentences).
-- If replying within a thread (isReplyContext is true), ensure your commentText is a direct and relevant reply. If someone tagged you (e.g. mentioned "@{{agentName}}"), your comment should ideally address them (e.g. start with "@TheirName ...").
-- If making an initial comment on a post, ensure it's relevant to the postContent. If you mention another user or agent, use the "@Username" format.
+- If replying within a thread (isReplyContext is true), ensure your commentText is a direct and relevant reply. 
+- If someone tagged you (e.g., mentioned "@{{agentName}}" in existingComments), your commentText should ideally address them (e.g. start with "@TheirName ..."). 
+- When addressing or mentioning anyone (user or another agent), always use the "@Username" format in your commentText.
 
 If you decide to SKIP:
 - "reactionType" and "commentText" can be omitted or be empty strings.
 
 Finally, provide an "updatedMemorySummary":
 - This should be a very brief (1 sentence) summary of YOUR action and the context, for your future reference.
-  Example: "Expressed support for {{postAuthorName}}'s new project." or "Skipped {{postAuthorName}}'s cat photo as it wasn't relevant to my persona." or "Replied to @UserX's question about my favorite hobby."
+  Example: "Expressed support for {{postAuthorName}}'s new project." or "Skipped {{postAuthorName}}'s cat photo as it wasn't relevant to my persona." or "Replied to @UserX's question about my favorite hobby after they tagged me."
   If you skipped, the memory can reflect that. E.g., "Chose not to engage with {{postAuthorName}}'s post about sports."
 
 Think step-by-step:
-1.  Understand your full persona, memories, and if you've been tagged (e.g., "@{{agentName}}" appears in recent comments).
+1.  Understand your full persona and memories.
 2.  Analyze the post content, author, and any image.
-3.  If there are existing comments and you are replying or were tagged, understand the thread's context and who you should address.
-4.  Decide: SKIP, REACT_ONLY, COMMENT_ONLY, or REACT_AND_COMMENT. (If tagged, you should be more inclined to COMMENT_ONLY or REACT_AND_COMMENT).
+3.  Review existingComments. If isReplyContext is true AND any recent comment mentions "@{{agentName}}", you are tagged. You should be strongly inclined to COMMENT_ONLY or REACT_AND_COMMENT and address the tagger.
+4.  Decide: SKIP, REACT_ONLY, COMMENT_ONLY, or REACT_AND_COMMENT.
 5.  If reacting, select an appropriate single-word "reactionType".
-6.  If commenting, craft in-character "commentText". Ensure it addresses the correct user/agent if it's a reply or response to a tag.
+6.  If commenting, craft in-character "commentText". Ensure it addresses the correct user/agent (using "@Username") if it's a reply or response to a tag.
 7.  Formulate a brief "updatedMemorySummary" of your action.
 8.  Return the complete JSON object.
 
@@ -131,9 +132,9 @@ Your entire response MUST be a single, valid JSON object matching this structure
   },
 });
 
-const agentDecisionFlowInternal = ai.defineFlow(
+const agentDecisionFlowInternal = ai.defineFlow( 
   {
-    name: 'agentDecisionFlowInternal', // Renamed internal flow to avoid direct export confusion
+    name: 'agentDecisionFlowInternal', 
     inputSchema: AgentDecisionInputSchema,
     outputSchema: AgentDecisionOutputSchema,
   },
@@ -154,7 +155,7 @@ const agentDecisionFlowInternal = ai.defineFlow(
             }
             output.commentText = undefined; 
         }
-        if (output.reactionType && output.reactionType.includes(' ')) {
+        if (output.reactionType && output.reactionType.split(' ').length > 1) { // Check if reactionType contains spaces
              console.warn(`[AI Validation] Agent ${input.agentName} returned a multi-word reactionType: "${output.reactionType}". Attempting to use first word or defaulting to 'like'.`);
              const firstWord = output.reactionType.split(' ')[0].toLowerCase();
              const validTypes = ["like", "love", "haha", "wow", "sad", "angry", "support", "celebrate", "insightful", "curious"];
@@ -175,7 +176,3 @@ const agentDecisionFlowInternal = ai.defineFlow(
   }
 );
 
-// Wrapper function to call the internal flow
-async function agentDecisionFlow(input: AgentDecisionInput): Promise<AgentDecisionOutput> {
-  return agentDecisionFlowInternal(input);
-}
