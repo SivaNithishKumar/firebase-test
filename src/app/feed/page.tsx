@@ -40,7 +40,7 @@ export default function FeedPage() {
       const q = query(collection(db, "posts"), orderBy("createdAt", "desc"));
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const postsData: Post[] = [];
-        querySnapshot.forEach((docSnap) => { // Renamed to docSnap to avoid conflict
+        querySnapshot.forEach((docSnap) => {
           const data = docSnap.data();
           postsData.push({
             id: docSnap.id,
@@ -99,22 +99,29 @@ export default function FeedPage() {
           console.log(`[AI Reaction Trigger] Output from agent ${agent.name}:`, JSON.stringify(reactionOutput));
 
           if (reactionOutput.shouldReact && reactionOutput.reactionType && reactionOutput.reactionType.trim() !== "") {
-            const newReactionData = {
+            
+            const reactionDataPayload: {
+              agentId: string;
+              agentName: string;
+              type: string;
+              createdAt: number;
+              id: string;
+              message?: string; // message is optional
+            } = {
               agentId: agent.id,
               agentName: agent.name,
               type: reactionOutput.reactionType,
-              message: reactionOutput.reactionMessage || undefined, // Store the message
-              createdAt: Date.now(),
-            };
-            // Create a client-side unique ID for the reaction object for React keys and arrayRemove operations
-            const reactionForUnion = {
-                ...newReactionData,
-                id: `${agent.id}-${Date.now()}-${reactionOutput.reactionType.replace(/\s+/g, '-')}`, // Make ID more robust
+              createdAt: Date.now(), // Use client timestamp for arrayUnion compatibility
+              id: `${agent.id}-${Date.now()}-${reactionOutput.reactionType.replace(/\s+/g, '-')}-${(Math.random() + 1).toString(36).substring(7)}`, // Unique client-side ID
             };
 
-            console.log(`[AI Reaction Trigger] Agent ${agent.name} attempting to add reaction to Firestore:`, JSON.stringify(reactionForUnion));
+            if (reactionOutput.reactionMessage && reactionOutput.reactionMessage.trim()) {
+              reactionDataPayload.message = reactionOutput.reactionMessage;
+            }
+            
+            console.log(`[AI Reaction Trigger] Agent ${agent.name} attempting to add reaction to Firestore:`, JSON.stringify(reactionDataPayload));
             await updateDoc(postRef, {
-              reactions: arrayUnion(reactionForUnion)
+              reactions: arrayUnion(reactionDataPayload as ReactionType) // Cast to ReactionType
             });
             console.log(`[AI Reaction Trigger] Agent ${agent.name} successfully added reaction to Firestore.`);
             toast({ title: "Agent Reaction", description: `${agent.name} reacted: ${reactionOutput.reactionType}` });
@@ -154,7 +161,7 @@ export default function FeedPage() {
         userAvatarUrl: user.photoURL || null,
         content,
         imageUrl: imageUrl || null,
-        createdAt: serverTimestamp(),
+        createdAt: serverTimestamp(), // Main post uses serverTimestamp
         reactions: [],
         comments: [],
       };
@@ -216,3 +223,4 @@ export default function FeedPage() {
     </div>
   );
 }
+
