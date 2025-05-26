@@ -7,12 +7,12 @@ import { useForm } from "react-hook-form";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  updateProfile as updateFirebaseProfile, // Renamed to avoid conflict
+  updateProfile as updateFirebaseProfile,
 } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { auth, db } from "@/lib/firebase"; // Added db
-import { doc, setDoc, serverTimestamp } from "firebase/firestore"; // Added Firestore imports
+import { auth, db } from "@/lib/firebase";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -73,23 +73,21 @@ export default function AuthForm({ mode }: AuthFormProps) {
           signupValues.password
         );
         
-        // Update Firebase Auth profile
         await updateFirebaseProfile(userCredential.user, {
           displayName: signupValues.displayName,
-          // You could add photoURL here if you collect it during signup
         });
 
-        // Create a user profile document in Firestore
-        const userProfileData: AppUserProfile = {
+        const userProfileData: Omit<AppUserProfile, 'createdAt'> = { // Omit createdAt as it's handled by serverTimestamp
           uid: userCredential.user.uid,
           displayName: signupValues.displayName,
           email: userCredential.user.email,
           photoURL: userCredential.user.photoURL,
-          createdAt: Date.now(), // Using client timestamp for simplicity, serverTimestamp for top-level field
           friends: [],
+          memberOfNetworks: [], // Initialize as empty array
+          myNetworkMembers: [], // Initialize as empty array
         };
         const userProfileRef = doc(db, "userProfiles", userCredential.user.uid);
-        await setDoc(userProfileRef, { ...userProfileData, createdAt: serverTimestamp() }); // Ensure createdAt is server time
+        await setDoc(userProfileRef, { ...userProfileData, createdAt: serverTimestamp() }); 
         
         console.log("User profile created in Firestore for UID:", userCredential.user.uid);
         toast({ title: "Account created successfully!", description: "You are now logged in and your profile is set up." });

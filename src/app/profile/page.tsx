@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserCircle, Mail, CalendarDays, Users, UserPlus, UserCheck, UserX, Loader2, Network, UserMinus, UsersRound } from "lucide-react";
 import { format } from 'date-fns';
-import { db, Timestamp } from "@/lib/firebase";
+import { db, Timestamp } from "@/lib/firebase"; // Ensured Timestamp is imported
 import { 
   doc, 
   getDoc, 
@@ -25,13 +25,14 @@ import {
   serverTimestamp,
   updateDoc,
   deleteDoc,
-  getDocs
+  getDocs,
+  runTransaction // Added for potentially more complex transactions if needed
 } from "firebase/firestore";
 import type { AppUserProfile, FriendRequest, NetworkJoinRequest } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
 const convertAppUserProfileTimestamp = (profile: any): AppUserProfile => {
-    if (!profile) return {} as AppUserProfile; // Handle case where profile might be undefined
+    if (!profile) return {} as AppUserProfile; 
     return {
         ...profile,
         createdAt: profile.createdAt instanceof Timestamp ? profile.createdAt.toMillis() : (typeof profile.createdAt === 'number' ? profile.createdAt : Date.now()),
@@ -85,8 +86,6 @@ export default function ProfilePage() {
           setProfile(userProfileData);
 
           if (userProfileData.friends && userProfileData.friends.length > 0) {
-            // To avoid too many reads, fetch friend details only if list changes or initial load
-            // For simplicity here, re-fetching. Production might optimize this.
             const friendPromises = userProfileData.friends.map(friendId => getDoc(doc(db, "userProfiles", friendId)));
             const friendDocs = await Promise.all(friendPromises);
             setFriends(friendDocs.filter(docSnap => docSnap.exists()).map(docSnap => convertAppUserProfileTimestamp(docSnap.data() as AppUserProfile)));
@@ -147,6 +146,7 @@ export default function ProfilePage() {
   const handleAcceptFriendRequest = async (request: FriendRequest) => {
     if (!user || !profile) return;
     setProcessingRequestId(request.id);
+    console.log(`[Friend Accept] User ${user.uid} accepting request ${request.id} from ${request.senderId}`);
     try {
       const batch = writeBatch(db);
       const requestRef = doc(db, "friendRequests", request.id);
@@ -161,8 +161,8 @@ export default function ProfilePage() {
       await batch.commit();
       toast({ title: "Friend Request Accepted", description: `You are now friends with ${request.senderDisplayName}.` });
     } catch (error: any) {
-      console.error("Error accepting friend request:", error);
-      toast({ title: "Error", description: `Could not accept request: ${error.message}`, variant: "destructive" });
+      console.error(`[Friend Accept] Error accepting friend request ${request.id}:`, error);
+      toast({ title: "Error Accepting Friend", description: `Could not accept request: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
     } finally {
       setProcessingRequestId(null);
     }
@@ -171,13 +171,14 @@ export default function ProfilePage() {
   const handleDeclineFriendRequest = async (request: FriendRequest) => {
     if (!user) return;
     setProcessingRequestId(request.id);
+    console.log(`[Friend Decline] User ${user.uid} declining request ${request.id} from ${request.senderId}`);
     try {
       const requestRef = doc(db, "friendRequests", request.id);
       await updateDoc(requestRef, { status: "declined", updatedAt: serverTimestamp() });
       toast({ title: "Friend Request Declined", description: `Request from ${request.senderDisplayName} declined.` });
     } catch (error: any) {
-      console.error("Error declining friend request:", error);
-      toast({ title: "Error", description: `Could not decline request: ${error.message}`, variant: "destructive" });
+      console.error(`[Friend Decline] Error declining friend request ${request.id}:`, error);
+      toast({ title: "Error Declining Friend", description: `Could not decline request: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
     } finally {
       setProcessingRequestId(null);
     }
@@ -186,6 +187,7 @@ export default function ProfilePage() {
   const handleUnfriend = async (friendId: string) => {
     if (!user || !profile) return;
     setProcessingRequestId(friendId);
+    console.log(`[Unfriend] User ${user.uid} unfriending ${friendId}`);
     try {
       const batch = writeBatch(db);
       const currentUserProfileRef = doc(db, "userProfiles", user.uid);
@@ -198,8 +200,8 @@ export default function ProfilePage() {
       const unfriendedUser = friends.find(f => f.uid === friendId);
       toast({ title: "Unfriended", description: `You are no longer friends with ${unfriendedUser?.displayName || 'this user'}.` });
     } catch (error: any) {
-        console.error("Error unfriending user:", error);
-        toast({ title: "Error", description: `Could not unfriend user: ${error.message}`, variant: "destructive" });
+        console.error(`[Unfriend] Error unfriending user ${friendId}:`, error);
+        toast({ title: "Error Unfriending", description: `Could not unfriend user: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
     } finally {
         setProcessingRequestId(null);
     }
@@ -208,24 +210,23 @@ export default function ProfilePage() {
   const handleAcceptNetworkJoinRequest = async (request: NetworkJoinRequest) => {
     if (!user || !profile) return;
     setProcessingRequestId(request.id);
+    console.log(`[Network Join Accept] Network Owner ${user.uid} accepting request ${request.id} from Sender ${request.senderId}`);
     try {
       const batch = writeBatch(db);
       const requestRef = doc(db, "networkJoinRequests", request.id);
       batch.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
 
-      // Add sender to network owner's myNetworkMembers list
       const networkOwnerProfileRef = doc(db, "userProfiles", user.uid); // Current user is the network owner
       batch.update(networkOwnerProfileRef, { myNetworkMembers: arrayUnion(request.senderId) });
 
-      // Add network owner to sender's memberOfNetworks list
       const senderProfileRef = doc(db, "userProfiles", request.senderId);
       batch.update(senderProfileRef, { memberOfNetworks: arrayUnion(user.uid) }); // user.uid is networkOwnerId
 
       await batch.commit();
       toast({ title: "Network Join Request Accepted", description: `${request.senderDisplayName} has joined your network.` });
     } catch (error: any) {
-        console.error("Error accepting network join request:", error);
-        toast({ title: "Error", description: `Could not accept join request: ${error.message}`, variant: "destructive" });
+        console.error(`[Network Join Accept] Error accepting network join request ${request.id} from ${request.senderId}:`, error);
+        toast({ title: "Error Accepting Join Request", description: `Could not accept join request: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
     } finally {
         setProcessingRequestId(null);
     }
@@ -234,13 +235,14 @@ export default function ProfilePage() {
   const handleDeclineNetworkJoinRequest = async (request: NetworkJoinRequest) => {
     if (!user) return;
     setProcessingRequestId(request.id);
+    console.log(`[Network Join Decline] Network Owner ${user.uid} declining request ${request.id} from Sender ${request.senderId}`);
     try {
       const requestRef = doc(db, "networkJoinRequests", request.id);
       await updateDoc(requestRef, { status: "declined", updatedAt: serverTimestamp() });
       toast({ title: "Network Join Request Declined", description: `Request from ${request.senderDisplayName} to join your network declined.` });
     } catch (error: any) {
-        console.error("Error declining network join request:", error);
-        toast({ title: "Error", description: `Could not decline join request: ${error.message}`, variant: "destructive" });
+        console.error(`[Network Join Decline] Error declining network join request ${request.id} from ${request.senderId}:`, error);
+        toast({ title: "Error Declining Join Request", description: `Could not decline join request: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
     } finally {
         setProcessingRequestId(null);
     }
@@ -249,6 +251,7 @@ export default function ProfilePage() {
   const handleRemoveNetworkMember = async (memberId: string) => {
     if (!user || !profile) return;
     setProcessingRequestId(memberId); 
+    console.log(`[Remove Member] Network Owner ${user.uid} removing member ${memberId} from their network.`);
     try {
       const batch = writeBatch(db);
       const networkOwnerProfileRef = doc(db, "userProfiles", user.uid);
@@ -261,8 +264,8 @@ export default function ProfilePage() {
       const removedMember = myNetworkMembersList.find(m => m.uid === memberId);
       toast({ title: "Member Removed", description: `${removedMember?.displayName || 'User'} has been removed from your network.` });
     } catch (error: any) {
-        console.error("Error removing network member:", error);
-        toast({ title: "Error", description: `Could not remove member: ${error.message}`, variant: "destructive" });
+        console.error(`[Remove Member] Error removing member ${memberId} from network of ${user.uid}:`, error);
+        toast({ title: "Error Removing Member", description: `Could not remove member: ${error.message || 'Unknown Firestore error'}`, variant: "destructive" });
     } finally {
         setProcessingRequestId(null);
     }
@@ -294,10 +297,12 @@ export default function ProfilePage() {
   }
   
   if (!user && !authLoading) {
+    // This case should be handled by the useEffect redirect, but as a fallback:
     return <div className="text-center">Please log in to view your profile.</div>;
   }
 
   if (!profile && !loadingProfile && user) {
+    // This might happen if profile creation failed or is delayed
     return <div className="text-center">User profile not found. It might be still creating or an error occurred. Please try refreshing.</div>;
   }
 
