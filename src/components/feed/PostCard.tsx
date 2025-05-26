@@ -54,33 +54,41 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   };
 
   const handleReaction = async (reactionType: string) => {
-    if (!currentUser) return; // Or handle guest reactions if desired
+    if (!currentUser) return; 
 
-    // This is a placeholder for agent reactions based on `intelligentReaction`
-    // For now, we'll simulate a specific agent reacting.
     const reactingAgent = dummyAgents[Math.floor(Math.random() * dummyAgents.length)];
 
-    const reaction: ReactionType = {
-      id: `${reactingAgent.id}-${Date.now()}`, // Simple unique ID
+    const reaction: Omit<ReactionType, 'id' | 'createdAt'> & { createdAt: any } = { // Use Omit for new reaction
       agentId: reactingAgent.id,
       agentName: reactingAgent.name,
       type: reactionType,
-      createdAt: Date.now(),
+      createdAt: serverTimestamp(), // Use serverTimestamp
     };
+    
+    // Create a version with a client-side ID for local state updates or optimistic UI, if needed.
+    // For arrayUnion, Firestore generates the server timestamp.
+    const reactionWithClientSideIdAndTimestamp = {
+        ...reaction,
+        id: `${reactingAgent.id}-${Date.now()}`, // Temporary client-side ID
+        // createdAt is serverTimestamp(), so reading it back will be a Firestore Timestamp
+    };
+
 
     const postRef = doc(db, "posts", post.id);
     try {
       // Check if this agent already reacted with this type
+      // Note: This check becomes more complex if createdAt is a serverTimestamp object locally before write.
+      // For simplicity, this check relies on agentId and type.
       const existingReaction = post.reactions?.find(r => r.agentId === reaction.agentId && r.type === reaction.type);
       if (existingReaction) {
-        // TODO: Implement un-reacting or changing reaction. For now, do nothing or remove.
         await updateDoc(postRef, {
-          reactions: arrayRemove(existingReaction)
+          reactions: arrayRemove(existingReaction) // existingReaction is from current state, should be fine
         });
         toast({ title: "Reaction removed", description: `${reactingAgent.name} removed their reaction.` });
       } else {
+        // For arrayUnion, pass the object with serverTimestamp()
         await updateDoc(postRef, {
-          reactions: arrayUnion(reaction)
+          reactions: arrayUnion(reactionWithClientSideIdAndTimestamp) 
         });
         toast({ title: "Agent Reacted!", description: `${reactingAgent.name} reacted with ${reactionType}.` });
       }
@@ -94,35 +102,34 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     if (!newComment.trim() || !currentUser) return;
     setIsCommenting(true);
 
+    const submittedCommentContent = newComment; // Capture content before resetting
+
     const commentData: Omit<CommentType, 'id' | 'createdAt'> & { createdAt: any } = {
       postId: post.id,
       userId: currentUser.uid,
       authorName: currentUser.displayName || "Anonymous User",
       authorAvatarUrl: currentUser.photoURL,
-      content: newComment,
-      createdAt: serverTimestamp(), // Use server timestamp
+      content: submittedCommentContent,
+      createdAt: serverTimestamp(), 
+    };
+    
+    // Create a version with a client-side ID for local state updates or optimistic UI.
+    // The actual createdAt will be set by the server.
+    const newCommentForUnion = { 
+        ...commentData, 
+        id: doc(collection(db, "dummy")).id, // Generate client-side unique ID
     };
 
-    const submittedCommentContent = newComment; // Capture content before resetting
 
     try {
       const postRef = doc(db, "posts", post.id);
-      // Firestore subcollections are better for comments, but for simplicity using array field
-      // This can be slow/expensive for many comments.
-      // Ideally, comments would be a subcollection: collection(db, "posts", post.id, "comments")
-      // For this example, we stick to the array in the Post type.
-      // We need to manually create an ID if adding to an array like this.
-      const newCommentWithId = { ...commentData, content: submittedCommentContent, id: doc(collection(db, "dummy")).id, createdAt: Date.now() }; 
-      
       await updateDoc(postRef, {
-        comments: arrayUnion(newCommentWithId) 
+        comments: arrayUnion(newCommentForUnion) 
       });
       
       setNewComment("");
       toast({ title: "Comment Added", description: "Your comment has been posted." });
 
-      // Simulate an AI agent responding after a short delay (2 seconds)
-      // This simulation is asynchronous and won't block the UI.
       setTimeout(() => simulateAgentResponse(post, submittedCommentContent), 2000);
 
     } catch (error) {
@@ -134,19 +141,10 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   };
 
   const simulateAgentResponse = async (targetPost: Post, userCommentContent: string) => {
-    if (!userCommentContent.trim()) return; // Don't respond to empty captured comments
+    if (!userCommentContent.trim()) return; 
 
     const respondingAgent = dummyAgents[Math.floor(Math.random() * dummyAgents.length)];
     
-    // This is where you would call `versatileResponse`
-    // const aiResponse = await versatileResponse({
-    //   postContent: targetPost.content,
-    //   authorName: targetPost.userDisplayName || "User",
-    //   agentPersona: respondingAgent.persona,
-    //   existingComments: [...(targetPost.comments || []).map(c => c.content), userCommentContent]
-    // });
-    // const agentCommentContent = aiResponse.response.response; // Accessing nested response
-
     const agentCommentContent = `Thanks for your comment, ${currentUser?.displayName || 'User'}! That's an interesting point about "${userCommentContent.substring(0, 20)}...". From my perspective as ${respondingAgent.persona}, I think... [mock AI response]`;
     
     const agentComment: Omit<CommentType, 'id' | 'createdAt'> & { createdAt: any } = {
@@ -158,11 +156,16 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       createdAt: serverTimestamp(),
     };
 
+    // Create a version with a client-side ID for local state updates or optimistic UI.
+    const newAgentCommentForUnion = { 
+        ...agentComment, 
+        id: doc(collection(db, "dummy")).id, // Generate client-side unique ID
+    };
+
     try {
       const postRef = doc(db, "posts", targetPost.id);
-      const newAgentCommentWithId = { ...agentComment, id: doc(collection(db, "dummy")).id, createdAt: Date.now() };
       await updateDoc(postRef, {
-        comments: arrayUnion(newAgentCommentWithId)
+        comments: arrayUnion(newAgentCommentForUnion)
       });
       toast({ title: "Agent Responded!", description: `${respondingAgent.name} replied to the post.` });
     } catch (error) {
@@ -312,4 +315,3 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     </Card>
   );
 }
-

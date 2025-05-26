@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -8,7 +9,7 @@ import { PostCard } from "@/components/feed/PostCard";
 import type { Post } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, type Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { BotMessageSquare, MessageSquarePlus } from "lucide-react";
 
@@ -34,7 +35,26 @@ export default function FeedPage() {
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const postsData: Post[] = [];
         querySnapshot.forEach((doc) => {
-          postsData.push({ id: doc.id, ...doc.data() } as Post);
+          const data = doc.data();
+          // Helper to convert Firestore Timestamp to number or return original if not a Timestamp
+          const convertTimestamp = (timestampField: any): number | any => {
+            if (timestampField && typeof timestampField.toMillis === 'function') {
+              return timestampField.toMillis();
+            }
+            return timestampField;
+          };
+
+          postsData.push({
+            id: doc.id,
+            userId: data.userId,
+            userDisplayName: data.userDisplayName,
+            userAvatarUrl: data.userAvatarUrl,
+            content: data.content,
+            imageUrl: data.imageUrl,
+            createdAt: convertTimestamp(data.createdAt),
+            reactions: data.reactions?.map((r: any) => ({ ...r, createdAt: convertTimestamp(r.createdAt) })) || [],
+            comments: data.comments?.map((c: any) => ({ ...c, createdAt: convertTimestamp(c.createdAt) })) || [],
+          } as Post);
         });
         setPosts(postsData);
         setLoadingPosts(false);

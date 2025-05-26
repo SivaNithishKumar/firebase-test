@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,7 +10,7 @@ import { AgentCard } from "@/components/agents/AgentCard";
 import type { Agent } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/firebase";
-import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
+import { collection, query, where, onSnapshot, orderBy, type Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { PlusCircle, Users, Bot } from "lucide-react";
 
@@ -36,7 +37,19 @@ export default function AgentsPage() {
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const agentsData: Agent[] = [];
         querySnapshot.forEach((doc) => {
-          agentsData.push({ id: doc.id, ...doc.data() } as Agent);
+          const data = doc.data();
+           // Helper to convert Firestore Timestamp to number or return original if not a Timestamp
+          const convertTimestamp = (timestampField: any): number | any => {
+            if (timestampField && typeof timestampField.toMillis === 'function') {
+              return timestampField.toMillis();
+            }
+            return timestampField;
+          };
+          agentsData.push({ 
+            id: doc.id, 
+            ...data,
+            createdAt: convertTimestamp(data.createdAt),
+          } as Agent);
         });
         setAgents(agentsData);
         setLoadingAgents(false);
