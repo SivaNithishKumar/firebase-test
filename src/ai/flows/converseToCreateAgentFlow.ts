@@ -17,7 +17,8 @@ const ChatHistoryItemSchema = z.object({
   content: z.string(),
 });
 
-export const ConverseToCreateAgentInputSchema = z.object({
+// Removed export from schema definition
+const ConverseToCreateAgentInputSchema = z.object({
   chatHistory: z.array(ChatHistoryItemSchema).describe("The history of the conversation so far. The last message is the latest user message."),
   currentAgentDraft: z.object({ // Using partial of AgentFormData definition
     name: z.string().optional().describe("The agent's proposed name."),
@@ -32,7 +33,8 @@ export const ConverseToCreateAgentInputSchema = z.object({
 });
 export type ConverseToCreateAgentInput = z.infer<typeof ConverseToCreateAgentInputSchema>;
 
-export const ConverseToCreateAgentOutputSchema = z.object({
+// Removed export from schema definition
+const ConverseToCreateAgentOutputSchema = z.object({
   aiResponseMessage: z.string().describe("The AI's next message or question to the user to continue building the persona."),
   updatedAgentDraft: ConverseToCreateAgentInputSchema.shape.currentAgentDraft.describe("The agent persona draft, updated based on the latest interaction."),
   isFinalized: z.boolean().describe("True if the AI believes it has gathered sufficient information to create a complete agent persona, false otherwise."),
@@ -138,3 +140,4 @@ export async function converseToCreateAgent(input: ConverseToCreateAgentInput): 
   console.log('[converseToCreateAgentFlow] Output:', JSON.stringify(validatedOutput, null, 2));
   return validatedOutput;
 }
+
