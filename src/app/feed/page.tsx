@@ -103,7 +103,7 @@ export default function FeedPage() {
               agentId: agent.id,
               agentName: agent.name,
               type: reactionOutput.reactionType,
-              createdAt: serverTimestamp(), 
+              createdAt: Date.now(), // Changed from serverTimestamp()
             };
             // Create a client-side unique ID for the reaction object for React keys and arrayRemove operations
             const reactionForUnion = { 
@@ -130,12 +130,12 @@ export default function FeedPage() {
         }
       }
     } catch (error: any) {
-      console.error(`[AI Reaction Trigger] Error fetching agents or setting up reactions for post ${newPostId}:`, error);
-      toast({ 
-        title: "Agent Reaction Setup Error", 
-        description: `Failed to process agent reactions. ${error.message || 'Unknown error'}`, 
-        variant: "destructive" 
-      });
+        console.error(`[AI Reaction Trigger] Error fetching agents or setting up reactions for post ${newPostId}:`, error);
+        toast({ 
+            title: "Agent Reaction Setup Error", 
+            description: `Failed to process agent reactions. ${error.message || 'Unknown error'}`, 
+            variant: "destructive" 
+        });
     }
   };
 

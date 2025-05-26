@@ -112,7 +112,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           agentId: reactingAgent.id,
           agentName: reactingAgent.name,
           type: reactionType,
-          createdAt: serverTimestamp(),
+          createdAt: Date.now(), // Changed from serverTimestamp()
         };
          const reactionForUnion = {
             ...newReactionData,
@@ -143,11 +143,11 @@ export function PostCard({ post, currentUser }: PostCardProps) {
 
     const existingCommentsStrings = (currentPost.comments || []).map(c => `${c.authorName}: ${c.content}`);
     
-    const currentThreadForAI = [...existingCommentsStrings]; // Already includes the new user comment due to optimistic update for AI context
+    const currentThreadForAI = [...existingCommentsStrings]; 
 
     const aiInput: VersatileResponseInput = {
-      postContent: currentPost.content,
-      authorName: triggeringUserDisplayName, // Author of the comment the agent is responding to
+      postContent: `${currentPost.content} (User ${triggeringUserDisplayName} just commented: "${triggeringUserCommentContent}")`,
+      authorName: triggeringUserDisplayName, 
       agentPersona: respondingAgent.persona,
       existingComments: currentThreadForAI,
     };
@@ -164,11 +164,11 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           authorName: respondingAgent.name,
           authorAvatarUrl: respondingAgent.avatarUrl || `https://placehold.co/40x40/000000/FFFFFF.png?text=${getInitials(respondingAgent.name)}`,
           content: aiOutput.response,
-          createdAt: serverTimestamp(),
+          createdAt: Date.now(), // Changed from serverTimestamp()
         };
         const agentCommentForUnion = {
             ...agentCommentData,
-            id: doc(collection(db, "dummy")).id, // Firestore auto-ID for the comment object within the array
+            id: doc(collection(db, "dummy")).id, 
         };
         
         console.log(`[AI Comment Trigger] Agent ${respondingAgent.name} attempting to add comment to Firestore:`, JSON.stringify(agentCommentForUnion));
@@ -195,7 +195,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser) return;
     setIsCommenting(true);
-    const submittedCommentContent = newComment; // Capture content before reset
+    const submittedCommentContent = newComment; 
     const userDisplayNameForAI = currentUser.displayName || "Anonymous User";
     console.log(`[User Comment] User ${currentUser.uid} attempting to add comment to post ${post.id}: "${submittedCommentContent}"`);
 
@@ -205,7 +205,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       authorName: userDisplayNameForAI,
       authorAvatarUrl: currentUser.photoURL || null,
       content: submittedCommentContent,
-      createdAt: serverTimestamp(), 
+      createdAt: Date.now(), // Changed from serverTimestamp() 
     };
     const newCommentForUnion = { 
         ...userCommentData, 
@@ -223,21 +223,16 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       setNewComment(""); 
       toast({ title: "Comment Added", description: "Your comment has been posted." });
 
-      // Create an optimistic representation of the post *as it would be* after this comment is added for the AI.
-      // This helps provide immediate context to the AI.
       const updatedPostForAI: Post = {
         ...post,
         comments: [
           ...(post.comments || []),
           {
             ...newCommentForUnion,
-            // For AI context, use client time or a placeholder for the newly added comment's timestamp
-            // as serverTimestamp() is resolved by Firestore. convertTimestamp won't work on a serverTimestamp() placeholder yet.
-            createdAt: Date.now() 
-          } as CommentType, // Cast as CommentType, ensuring all fields match
+            createdAt: newCommentForUnion.createdAt // Already a number from Date.now()
+          } as CommentType, 
         ],
       };
-      // Trigger AI response after user comment is successfully added (or at least attempted)
       triggerAgentCommentResponse(updatedPostForAI, submittedCommentContent, userDisplayNameForAI);
 
     } catch (error: any) {
