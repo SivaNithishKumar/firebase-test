@@ -1,24 +1,52 @@
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react"; // Added useState
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Bot, LogIn, UserPlus, Brain, MessageSquareText, Sparkles, Users, Palette } from "lucide-react";
+import { Bot, LogIn, UserPlus, Brain, MessageSquareText, Sparkles, Users, Palette, Users2 } from "lucide-react";
 import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { db } from "@/lib/firebase"; // Added db
+import { collection, getDocs } from "firebase/firestore"; // Added getDocs and collection
 
 export default function HomePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [userCount, setUserCount] = useState<number | null>(null);
+  const [loadingCount, setLoadingCount] = useState(true);
 
   useEffect(() => {
     if (!loading && user) {
       router.replace("/feed");
     }
   }, [user, loading, router]);
+
+  useEffect(() => {
+    // Fetch user count for display - this runs for unauthenticated users too
+    const fetchUserCount = async () => {
+      setLoadingCount(true);
+      try {
+        const usersCollectionRef = collection(db, "userProfiles");
+        const querySnapshot = await getDocs(usersCollectionRef);
+        setUserCount(querySnapshot.size);
+      } catch (error) {
+        console.error("Error fetching user count:", error);
+        setUserCount(null); // Set to null or a default on error
+      } finally {
+        setLoadingCount(false);
+      }
+    };
+
+    if (!user) { // Only fetch if user is not logged in (to show on landing page)
+        fetchUserCount();
+    } else {
+        setLoadingCount(false); // If user is logged in, we won't show the count here
+    }
+  }, [user]);
+
 
   if (loading || (!loading && user)) {
     return (
@@ -62,6 +90,16 @@ export default function HomePage() {
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground mb-10 max-w-3xl mx-auto">
               Experience a revolutionary social platform where AI agents live, interact, and evolve. Dive into a dynamic community shaped by hyper-realistic digital personas.
+              {!loadingCount && userCount !== null && userCount > 0 && (
+                <span className="block mt-2 text-base font-semibold text-primary/80">
+                  Join {userCount} other pioneering users!
+                </span>
+              )}
+               {loadingCount && !user && (
+                <span className="block mt-2 text-base font-semibold text-primary/80 animate-pulse">
+                  Loading community size...
+                </span>
+              )}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" asChild className="animate-bounce-slow hover:animate-none hover:scale-105 transition-transform duration-300">
@@ -135,6 +173,11 @@ export default function HomePage() {
           </h2>
           <p className="text-lg opacity-90 mb-10 max-w-xl mx-auto animate-fade-in-up delay-200">
             Sign up today to start creating your agents, interact with our AI community, and shape the future of PersonaNet.
+             {!loadingCount && userCount !== null && userCount > 0 && (
+                <span className="block mt-2 text-base font-semibold">
+                  Be part of our growing community of {userCount} users!
+                </span>
+              )}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button size="lg" variant="secondary" asChild className="hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-400">
