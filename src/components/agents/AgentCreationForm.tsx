@@ -22,12 +22,12 @@ import type { Agent } from "@/types";
 
 
 const agentSchema = z.object({
-  name: z.string().min(2, "Agent name must be at least 2 characters.").max(50, "Agent name is too long."),
-  persona: z.string().min(10, "Core persona description must be at least 10 characters.").max(1000, "Persona description is too long."),
-  archetype: z.string().min(2, "Archetype must be at least 2 characters.").max(100).optional().or(z.literal("")),
-  psychologicalProfile: z.string().min(2, "Psychological profile must be at least 2 characters.").max(200).optional().or(z.literal("")),
-  backstory: z.string().min(10, "Backstory must be at least 10 characters.").max(2000).optional().or(z.literal("")),
-  languageStyle: z.string().min(5, "Language style must be at least 5 characters.").max(1000).optional().or(z.literal("")),
+  name: z.string().min(2, "Agent name must be at least 2 characters.").max(50, "Agent name is too long (max 50 chars)."),
+  persona: z.string().min(10, "Core persona description must be at least 10 characters.").max(1000, "Persona description is too long (max 1000 chars)."),
+  archetype: z.string().min(2, "Archetype must be at least 2 characters.").max(100, "Archetype is too long (max 100 chars).").optional().or(z.literal("")),
+  psychologicalProfile: z.string().min(2, "Psychological profile must be at least 2 characters.").max(200, "Psychological profile is too long (max 200 chars).").optional().or(z.literal("")),
+  backstory: z.string().min(10, "Backstory must be at least 10 characters.").max(2000, "Backstory is too long (max 2000 chars).").optional().or(z.literal("")),
+  languageStyle: z.string().min(5, "Language style must be at least 5 characters.").max(1000, "Language style is too long (max 1000 chars).").optional().or(z.literal("")),
   avatarUrl: z.string().url("Invalid avatar URL (must be https or placehold.co).").optional().refine(val => !val || val.startsWith("https://placehold.co/") || val.startsWith("https://"), {
     message: "Avatar URL must be a valid https URL or from placehold.co.",
   }).or(z.literal("")),
@@ -71,7 +71,6 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
   });
 
   useEffect(() => {
-    // Scroll to bottom of chat when new messages are added
     if (chatScrollAreaRef.current) {
       const scrollViewport = chatScrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
       if (scrollViewport) {
@@ -106,9 +105,16 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
   };
 
   const handleOpenAIHelper = () => {
-    setAiHelperChatMessages([{ id: "init", sender: "ai", text: "Hello! I'm here to help you design a new AI agent. To start, what kind of agent are you imagining? Even a simple idea or a name is a great starting point!" }]);
-    setCurrentAgentDraft(form.getValues()); 
-    setIsAIDraftFinalized(false);
+    const initialDraft = form.getValues();
+    setCurrentAgentDraft(initialDraft);
+    
+    let initialMessage = "Hello! I'm here to help you design a new AI agent. To start, what kind of agent are you imagining? Even a simple idea or a name is a great starting point!";
+    if (Object.values(initialDraft).some(val => val && val.toString().trim() !== '')) {
+        initialMessage = "Welcome back! I see we have some details for an agent already. What would you like to refine or work on next?";
+    }
+
+    setAiHelperChatMessages([{ id: "init", sender: "ai", text: initialMessage }]);
+    setIsAIDraftFinalized(false); // Reset finalization state
     setShowAIHelperDialog(true);
   };
 
@@ -116,7 +122,6 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
     if (!aiHelperUserInput.trim()) return;
 
     const newUserMessage: ChatMessage = { id: Date.now().toString(), sender: "user", text: aiHelperUserInput };
-    // Preserve previous messages correctly when updating state
     const updatedChatHistory = [...aiHelperChatMessages, newUserMessage];
     setAiHelperChatMessages(updatedChatHistory);
     
@@ -126,9 +131,8 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
 
     try {
       const inputForAI: ConverseToCreateAgentInput = {
-        // Pass the updated history, not the stale one
         chatHistory: updatedChatHistory.map(m => ({ role: m.sender === 'user' ? 'user' : 'ai', content: m.text })),
-        currentAgentDraft: currentAgentDraft, // currentAgentDraft state is already up-to-date
+        currentAgentDraft: currentAgentDraft,
         userMessage: currentMessageToAI,
       };
       
@@ -168,7 +172,6 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
     setShowAIHelperDialog(false);
   };
 
-
   return (
     <>
       <Card>
@@ -193,7 +196,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
                   <FormItem>
                     <FormLabel>Agent Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="E.g., Nova 'Trendsetter' Li" {...field} />
+                      <Input placeholder="E.g., Nova 'Trendsetter' Li (max 50 chars)" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -207,7 +210,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
                     <FormLabel>Core Persona Description</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Describe the agent's primary personality, key behaviors, and how it generally interacts. (e.g., A virtual fashion icon, always on the lookout for the next big trend...)"
+                        placeholder="Describe the agent's primary personality, key behaviors, and how it generally interacts. (max 1000 chars)"
                         {...field}
                         className="min-h-[100px]"
                       />
@@ -226,7 +229,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
                   <FormItem>
                     <FormLabel>Archetype (Optional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="E.g., Creator / Innocent, Sage, Trickster" {...field} />
+                      <Input placeholder="E.g., Creator / Innocent, Sage, Trickster (max 100 chars)" {...field} />
                     </FormControl>
                     <ShadcnFormDescription>Jungian or community archetype that grounds the agent.</ShadcnFormDescription>
                     <FormMessage />
@@ -240,7 +243,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
                   <FormItem>
                     <FormLabel>Psychological Profile (Optional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="E.g., ENFP | High Openness, low Neuroticism" {...field} />
+                      <Input placeholder="E.g., ENFP | High Openness, low Neuroticism (max 200 chars)" {...field} />
                     </FormControl>
                     <ShadcnFormDescription>Big Five, MBTI, or other relevant psychological traits.</ShadcnFormDescription>
                     <FormMessage />
@@ -255,7 +258,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
                     <FormLabel>Backstory (Optional)</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Describe the agent's origin story, career, personal goals, hidden motivations, significant life events..."
+                        placeholder="Describe the agent's origin story, career, personal goals, hidden motivations, significant life events... (max 2000 chars)"
                         {...field}
                         className="min-h-[150px]"
                       />
@@ -272,7 +275,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
                     <FormLabel>Language & Style Guide (Optional)</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Specify typical lexicon, emoji vocabulary, posting frequency, favored media (memes, text essays), tone (e.g., formal, sarcastic, bubbly)..."
+                        placeholder="Specify typical lexicon, emoji vocabulary, posting frequency, favored media (memes, text essays), tone (e.g., formal, sarcastic, bubbly)... (max 1000 chars)"
                         {...field}
                         className="min-h-[100px]"
                       />
@@ -377,7 +380,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
                     <strong>Avatar URL:</strong> 
                     {currentAgentDraft.avatarUrl ? (
                         <a href={currentAgentDraft.avatarUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline ml-1 break-all">{currentAgentDraft.avatarUrl}</a>
-                    ) : <span className="text-muted-foreground italic"> Will be auto-generated</span>}
+                    ) : <span className="text-muted-foreground italic ml-1">Will be auto-generated</span>}
                     {currentAgentDraft.avatarUrl && <img src={currentAgentDraft.avatarUrl} alt="Avatar Preview" className="w-16 h-16 rounded-md mt-1 border"/>}
                   </div>
                 </div>
@@ -392,7 +395,7 @@ export function AgentCreationForm({ userId }: AgentCreationFormProps) {
             <Button 
                 type="button" 
                 onClick={applyAIDraftToForm} 
-                disabled={!isAIDraftFinalized && Object.values(currentAgentDraft).every(val => !val)}
+                disabled={!isAIDraftFinalized && Object.values(currentAgentDraft).every(val => !val || val.toString().trim() === '')}
             >
               {isAIDraftFinalized ? "Apply Final Draft" : "Apply Current Draft"}
             </Button>
