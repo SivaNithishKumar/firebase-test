@@ -12,14 +12,15 @@ import {
   getDocs,
   doc,
   addDoc,
-  serverTimestamp, // Ensure serverTimestamp is imported
+  serverTimestamp,
   getDoc,
   Timestamp,
   writeBatch,
   arrayUnion,
   limit,
-  onSnapshot, // Added for real-time updates on pending requests if needed
-  or // Added 'or' import
+  onSnapshot,
+  or, // Keep 'or'
+  and // Add 'and'
 } from "firebase/firestore";
 import type { AppUserProfile, FriendRequest, NetworkJoinRequest } from "@/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -76,7 +77,7 @@ export default function FriendsPage() {
                 displayName: user.displayName || "User",
                 email: user.email,
                 photoURL: user.photoURL,
-                createdAt: Date.now(), // Will be server timestamp
+                createdAt: Date.now(),
                 friends: [],
                 memberOfNetworks: [],
                 myNetworkMembers: []
@@ -86,7 +87,6 @@ export default function FriendsPage() {
               setCurrentUserProfile(convertAppUserProfileTimestamp(basicProfile));
           }
 
-          // Fetch all users excluding the current user
           const usersQuery = query(collection(db, "userProfiles"), where("uid", "!=", user.uid), limit(50));
           const usersSnapshot = await getDocs(usersQuery);
           const usersData = usersSnapshot.docs.map(docSnap => convertAppUserProfileTimestamp(docSnap.data()));
@@ -105,15 +105,20 @@ export default function FriendsPage() {
       // Listener for friend requests (both outgoing and incoming marked as pending)
       const frQuery = query(
         collection(db, "friendRequests"),
-        where("status", "==", "pending"),
-        or( // This 'or' needs to be imported
-          where("senderId", "==", user.uid),
-          where("receiverId", "==", user.uid)
+        and( // Nest within and()
+            where("status", "==", "pending"),
+            or(
+              where("senderId", "==", user.uid),
+              where("receiverId", "==", user.uid)
+            )
         )
       );
       const unsubscribeFriendRequests = onSnapshot(frQuery, (snapshot) => {
         const requests = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
         setPendingFriendRequests(requests);
+      }, (error) => {
+        console.error("[FriendsPage] Error fetching pending friend requests:", error);
+        toast({ title: "Error", description: `Failed to listen for friend requests: ${error.message}`, variant: "destructive" });
       });
 
       // Listener for outgoing network requests marked as pending
@@ -121,6 +126,9 @@ export default function FriendsPage() {
       const unsubscribeNetworkRequests = onSnapshot(nrQuery, (snapshot) => {
          const requests = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as NetworkJoinRequest));
          setPendingNetworkRequests(requests);
+      }, (error) => {
+        console.error("[FriendsPage] Error fetching pending network requests:", error);
+        toast({ title: "Error", description: `Failed to listen for network requests: ${error.message}`, variant: "destructive" });
       });
 
       return () => {
@@ -157,45 +165,43 @@ export default function FriendsPage() {
     console.log(`[Send Friend Request] Target User UID: ${targetUser.uid}, DisplayName: ${targetUser.displayName}`);
 
     try {
-      // Check if a request (pending or accepted) already exists between these two users
       const q1 = query(collection(db, "friendRequests"), where("senderId", "==", user.uid), where("receiverId", "==", targetUser.uid));
       const q2 = query(collection(db, "friendRequests"), where("senderId", "==", targetUser.uid), where("receiverId", "==", user.uid));
       const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
 
       if (!snap1.empty || !snap2.empty) {
-        const existingRequest = snap1.docs[0]?.data() || snap2.docs[0]?.data();
+        const existingRequestDoc = snap1.docs[0] || snap2.docs[0];
+        const existingRequest = existingRequestDoc?.data();
         if (existingRequest?.status === 'pending') {
             toast({ title: "Request Already Pending", description: "A friend request is already pending with this user.", variant: "default" });
         } else if (existingRequest?.status === 'accepted' || currentUserProfile.friends?.includes(targetUser.uid)) {
             toast({ title: "Already Friends", description: `You are already friends with ${targetUser.displayName}.`, variant: "default" });
         } else {
-             toast({ title: "Request Exists", description: "A friend request was previously handled or exists.", variant: "default" });
+             toast({ title: "Request Previously Handled", description: "A friend request was previously handled or exists with a non-pending status.", variant: "default" });
         }
-        setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' })); // Mark as 'sent' to update UI
+        setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
         return;
       }
 
-
       const newRequestData = {
-        senderId: user.uid, // This is crucial for the security rule
+        senderId: user.uid,
         senderDisplayName: currentUserProfile.displayName || "Anonymous User",
         senderPhotoURL: currentUserProfile.photoURL || null,
         receiverId: targetUser.uid,
         status: "pending" as FriendRequest['status'],
-        createdAt: serverTimestamp(), // Use serverTimestamp
-        updatedAt: serverTimestamp(), // Use serverTimestamp
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       };
 
       console.log('[Send Friend Request] Data to be sent to Firestore (request.resource.data equivalent):', JSON.stringify(newRequestData, (key, value) => {
-        // Firestore serverTimestamp objects don't serialize well, so represent them as strings for logging
         if (value && typeof value === 'object' && value.hasOwnProperty('_methodName') && value._methodName === 'serverTimestamp') {
           return 'FieldValue.serverTimestamp()';
         }
         return value;
       }, 2));
 
-      const requestRef = await addDoc(collection(db, "friendRequests"), newRequestData);
-      // No need to manually update pendingFriendRequests if using onSnapshot listener
+      await addDoc(collection(db, "friendRequests"), newRequestData);
+      // onSnapshot listener will update pendingFriendRequests
       setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
       toast({ title: "Friend Request Sent", description: `Request sent to ${targetUser.displayName}.` });
     } catch (error: any) {
@@ -245,6 +251,7 @@ export default function FriendsPage() {
         }, 2));
 
         await addDoc(collection(db, "networkJoinRequests"), newRequestData);
+        // onSnapshot will update pendingNetworkRequests
         setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
         toast({ title: "Network Join Request Sent", description: `Request sent to join ${targetUser.displayName}'s network.` });
     } catch (error: any) {
@@ -284,7 +291,6 @@ export default function FriendsPage() {
      if (networkRequestStatus[targetUserId] === 'sending') {
         return { text: "Sending...", disabled: true, icon: <Loader2 className="mr-2 animate-spin" />, variant: "default" as const };
     }
-    // User cannot join their own network
     if (currentUserProfile?.uid === targetUserId) {
         return { text: "Your Network", disabled: true, icon: <Network className="mr-2" />, variant: "outline" as const };
     }
@@ -368,7 +374,7 @@ export default function FriendsPage() {
 
       <div className="space-y-4">
         {filteredUsers.map((u) => {
-          if (u.uid === user?.uid) return null; // Don't show current user
+          if (u.uid === user?.uid) return null;
           const friendButtonState = getFriendButtonState(u.uid);
           const networkButtonState = getNetworkButtonState(u.uid);
           return (
@@ -412,7 +418,3 @@ export default function FriendsPage() {
     </div>
   );
 }
-
-    
-
-    
