@@ -153,7 +153,7 @@ export default function FriendsPage() { // Renamed component
       const newRequest: Omit<FriendRequest, "id"> = {
         senderId: user.uid,
         senderDisplayName: currentUserProfile.displayName,
-        senderPhotoURL: currentUserProfile.photoURL || undefined,
+        senderPhotoURL: currentUserProfile.photoURL || null, // Ensure null instead of undefined
         receiverId: targetUser.uid,
         status: "pending",
         createdAt: Date.now(), 
@@ -308,6 +308,8 @@ export default function FriendsPage() { // Renamed component
     </div>
   );
 }
+    
+
     
 
     
