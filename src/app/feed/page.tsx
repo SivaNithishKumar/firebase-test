@@ -9,7 +9,22 @@ import { PostCard } from "@/components/feed/PostCard";
 import type { Post, Agent, Reaction as ReactionType, Comment as CommentType, AppUserProfile } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, type Timestamp, getDocs, where, doc, updateDoc, arrayUnion, getDoc, or } from "firebase/firestore";
+import {
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+  addDoc,
+  serverTimestamp,
+  type Timestamp, // Added Timestamp import
+  getDocs,
+  where,
+  doc,
+  updateDoc,
+  arrayUnion,
+  getDoc,
+  or
+} from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { BotMessageSquare, Rss, Loader2 } from "lucide-react";
 import { agentDecision, type AgentDecisionInput, type AgentDecisionOutput } from "@/ai/flows/agent-decision-flow";
@@ -85,7 +100,7 @@ export default function FeedPage() {
             networkIdsToQuery.push(user.uid);
           } else if (networkIdsToQuery.length > 30) {
              // For now, just take the first 30. A production app would need pagination or a different strategy.
-             networkIdsToQuery.splice(30);
+             networkIdsToQuery.splice(0, networkIdsToQuery.length - 30); // Keep the last 30, or first 30
              toast({title: "Feed Limited", description: "Displaying posts from up to 30 joined networks.", variant: "default"});
           }
       }
@@ -177,7 +192,9 @@ export default function FeedPage() {
           if ((decisionOutput.decision === "REACT_ONLY" || decisionOutput.decision === "REACT_AND_COMMENT") && decisionOutput.reactionType) {
             const reactionDataPayload: ReactionType = {
               agentId: agent.id, agentName: agent.name, type: decisionOutput.reactionType,
-              createdAt: Date.now(), id: `${agent.id}-${Date.now()}-reaction-${Math.random().toString(36).substring(2, 9)}`,
+              createdAt: Date.now(), 
+              id: `${agent.id}-${Date.now()}-reaction-${Math.random().toString(36).substring(2, 9)}`,
+              // Only add message if it's a non-empty string
               ...(decisionOutput.reactionMessage && decisionOutput.reactionMessage.trim() !== "" && { message: decisionOutput.reactionMessage.trim() }),
             };
             firestoreUpdates.reactions = arrayUnion(reactionDataPayload);
@@ -214,7 +231,7 @@ export default function FeedPage() {
     console.log(`[FeedPage] Attempting to create post in network ${user.uid} by user: ${user.uid}`);
     try {
       const newPostData = {
-        userId: user.uid,
+        userId: user.uid, // This is also the network owner
         userDisplayName: user.displayName || "Anonymous User",
         userAvatarUrl: user.photoURL || null,
         networkId: user.uid, // Post belongs to the creator's network
@@ -228,7 +245,10 @@ export default function FeedPage() {
       const docRef = await addDoc(collection(db, "posts"), newPostData);
       console.log("[FeedPage] Post created successfully in Firestore with ID:", docRef.id);
       toast({ title: "Post Created!", description: "Your post is now live in your network." });
+      
+      // Trigger engagement from the network owner's agents
       await triggerAgentEngagementWithNewPost(docRef.id, content, imageUrl, user.uid, user.displayName || "Anonymous User", user.uid);
+
     } catch (error: any) {
       console.error("[FeedPage] Error creating post in Firestore:", error);
       toast({ title: "Error Creating Post", description: `Firestore error: ${error.message || 'Unknown error'}`, variant: "destructive" });
@@ -240,7 +260,7 @@ export default function FeedPage() {
       <div className="space-y-6">
          <div className="flex items-center gap-2 mb-4">
           <Rss className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold tracking-tight">Network Feed</h1>
+          <h1 className="text-3xl font-bold tracking-tight">My Network Feed</h1>
         </div>
         <Skeleton className="h-32 w-full rounded-lg" />
         <Skeleton className="h-48 w-full rounded-lg" />
@@ -253,7 +273,7 @@ export default function FeedPage() {
     <div className="max-w-2xl mx-auto space-y-8">
       <header className="flex items-center gap-2 mb-4">
         <Rss className="h-8 w-8 text-primary" />
-        <h1 className="text-3xl font-bold tracking-tight">Network Feed</h1>
+        <h1 className="text-3xl font-bold tracking-tight">My Network Feed</h1>
       </header>
       <p className="text-sm text-muted-foreground -mt-6">
         Showing posts from your network and networks you've joined.
