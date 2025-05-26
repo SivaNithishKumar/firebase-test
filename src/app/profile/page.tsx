@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link"; // Import Link
 import { useAuth } from "@/hooks/use-auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -320,7 +321,7 @@ export default function ProfilePage() {
         <CardContent>
           {loadingProfile && <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />}
           {!loadingProfile && friends.length === 0 && (
-            <p className="text-muted-foreground text-sm">You haven't added any friends yet. Go to the <Link href="/users" className="text-primary hover:underline">Find Users</Link> page to connect!</p>
+            <p className="text-muted-foreground text-sm">You haven't added any friends yet. Go to the <Link href="/friends" className="text-primary hover:underline">Find Friends</Link> page to connect!</p>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {friends.map(friend => (
@@ -353,3 +354,5 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+    

@@ -63,8 +63,8 @@ export default function Header() {
                 </Link>
               </Button>
               <Button variant="ghost" asChild className="hidden sm:inline-flex">
-                <Link href="/users">
-                  <UserSearch className="mr-2 h-4 w-4" /> Find Users
+                <Link href="/friends">
+                  <UserSearch className="mr-2 h-4 w-4" /> Find Friends
                 </Link>
               </Button>
             </>
@@ -102,8 +102,8 @@ export default function Header() {
                 <DropdownMenuItem onClick={() => router.push('/agents')} className="sm:hidden">
                   <Users className="mr-2 h-4 w-4" /> Agents
                 </DropdownMenuItem>
-                 <DropdownMenuItem onClick={() => router.push('/users')} className="sm:hidden">
-                  <UserSearch className="mr-2 h-4 w-4" /> Find Users
+                 <DropdownMenuItem onClick={() => router.push('/friends')} className="sm:hidden">
+                  <UserSearch className="mr-2 h-4 w-4" /> Find Friends
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/profile')}>
                   <UserIcon className="mr-2 h-4 w-4" />
@@ -135,3 +135,5 @@ export default function Header() {
     </header>
   );
 }
+
+    
