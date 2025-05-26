@@ -12,12 +12,13 @@ import {
   getDocs,
   doc,
   addDoc,
-  serverTimestamp,
+  serverTimestamp, // Ensure serverTimestamp is imported
   getDoc,
   Timestamp,
   writeBatch,
   arrayUnion,
   limit,
+  onSnapshot, // Added for real-time updates on pending requests if needed
 } from "firebase/firestore";
 import type { AppUserProfile, FriendRequest, NetworkJoinRequest } from "@/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -29,9 +30,13 @@ import { useToast } from "@/hooks/use-toast";
 import { UserPlus, CheckCircle, Clock, Loader2, Users as FriendsIcon, Search, UserRoundPlus, Network } from "lucide-react";
 
 const convertAppUserProfileTimestamp = (profile: any): AppUserProfile => {
+    if (!profile) return { uid: '', displayName: 'Anonymous', email: null, photoURL: null, createdAt: Date.now(), friends: [], memberOfNetworks: [], myNetworkMembers: [] };
     return {
         ...profile,
-        createdAt: profile.createdAt instanceof Timestamp ? profile.createdAt.toMillis() : profile.createdAt,
+        createdAt: profile.createdAt instanceof Timestamp ? profile.createdAt.toMillis() : (profile.createdAt || Date.now()),
+        friends: profile.friends || [],
+        memberOfNetworks: profile.memberOfNetworks || [],
+        myNetworkMembers: profile.myNetworkMembers || [],
     } as AppUserProfile;
 };
 
@@ -63,42 +68,64 @@ export default function FriendsPage() {
           const userProfileSnap = await getDoc(userProfileRef);
           if (userProfileSnap.exists()) {
             setCurrentUserProfile(convertAppUserProfileTimestamp(userProfileSnap.data()));
+          } else {
+             console.warn(`[FriendsPage] Current user profile not found for UID: ${user.uid}. Creating one.`);
+             const basicProfile: AppUserProfile = {
+                uid: user.uid,
+                displayName: user.displayName || "User",
+                email: user.email,
+                photoURL: user.photoURL,
+                createdAt: Date.now(), // Will be server timestamp
+                friends: [],
+                memberOfNetworks: [],
+                myNetworkMembers: []
+              };
+              await setDoc(userProfileRef, { ...basicProfile, createdAt: serverTimestamp() });
+              setCurrentUserProfile(convertAppUserProfileTimestamp(basicProfile));
           }
 
+          // Fetch all users excluding the current user
           const usersQuery = query(collection(db, "userProfiles"), where("uid", "!=", user.uid), limit(50));
           const usersSnapshot = await getDocs(usersQuery);
           const usersData = usersSnapshot.docs.map(docSnap => convertAppUserProfileTimestamp(docSnap.data()));
-          console.log("Fetched users data count:", usersData.length);
+          console.log("[FriendsPage] Fetched users data count:", usersData.length);
           setAllUsers(usersData);
 
-          // Fetch pending friend requests (both outgoing and incoming)
-          const outgoingFriendRequestsQuery = query(collection(db, "friendRequests"), where("senderId", "==", user.uid), where("status", "==", "pending"));
-          const incomingFriendRequestsQuery = query(collection(db, "friendRequests"), where("receiverId", "==", user.uid), where("status", "==", "pending"));
-          const [outgoingFriendSnap, incomingFriendSnap] = await Promise.all([getDocs(outgoingFriendRequestsQuery), getDocs(incomingFriendRequestsQuery)]);
-          const allPendingFriendRequests: FriendRequest[] = [];
-          outgoingFriendSnap.forEach(docSnap => allPendingFriendRequests.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
-          incomingFriendSnap.forEach(docSnap => { // Avoid adding duplicates if a request is both incoming and outgoing (shouldn't happen)
-            if (!allPendingFriendRequests.find(req => req.id === docSnap.id)) {
-              allPendingFriendRequests.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest);
-            }
-          });
-          setPendingFriendRequests(allPendingFriendRequests);
-
-          // Fetch pending network join requests sent by the current user
-          const outgoingNetworkRequestsQuery = query(collection(db, "networkJoinRequests"), where("senderId", "==", user.uid), where("status", "==", "pending"));
-          const outgoingNetworkSnap = await getDocs(outgoingNetworkRequestsQuery);
-          const pendingNetworkReqsData: NetworkJoinRequest[] = [];
-          outgoingNetworkSnap.forEach(docSnap => pendingNetworkReqsData.push({ id: docSnap.id, ...docSnap.data() } as NetworkJoinRequest));
-          setPendingNetworkRequests(pendingNetworkReqsData);
-
         } catch (error: any) {
-          console.error("Error fetching users or profile:", error);
-          toast({ title: "Error", description: `Could not load users: ${error.message}`, variant: "destructive" });
+          console.error("[FriendsPage] Error fetching users or profile:", error);
+          toast({ title: "Error", description: `Could not load user data: ${error.message}`, variant: "destructive" });
         } finally {
             setLoadingUsers(false);
         }
       };
       fetchUsersAndData();
+
+      // Listener for friend requests (both outgoing and incoming marked as pending)
+      const frQuery = query(
+        collection(db, "friendRequests"),
+        where("status", "==", "pending"),
+        or(
+          where("senderId", "==", user.uid),
+          where("receiverId", "==", user.uid)
+        )
+      );
+      const unsubscribeFriendRequests = onSnapshot(frQuery, (snapshot) => {
+        const requests = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as FriendRequest));
+        setPendingFriendRequests(requests);
+      });
+
+      // Listener for outgoing network requests marked as pending
+      const nrQuery = query(collection(db, "networkJoinRequests"), where("senderId", "==", user.uid), where("status", "==", "pending"));
+      const unsubscribeNetworkRequests = onSnapshot(nrQuery, (snapshot) => {
+         const requests = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as NetworkJoinRequest));
+         setPendingNetworkRequests(requests);
+      });
+
+      return () => {
+        unsubscribeFriendRequests();
+        unsubscribeNetworkRequests();
+      };
+
     }
   }, [user, toast]);
 
@@ -107,7 +134,7 @@ export default function FriendsPage() {
       return allUsers;
     }
     return allUsers.filter(u =>
-      u.displayName?.toLowerCase().includes(searchTerm.toLowerCase())
+      (u.displayName || "").toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [allUsers, searchTerm]);
 
@@ -117,49 +144,72 @@ export default function FriendsPage() {
   };
 
   const handleSendFriendRequest = async (targetUser: AppUserProfile) => {
-    if (!user || !currentUserProfile) return;
+    if (!user || !currentUserProfile) {
+      toast({ title: "Authentication Error", description: "Please ensure you are logged in.", variant: "destructive" });
+      return;
+    }
     setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sending' }));
+
+    console.log(`[Send Friend Request] Current User UID (request.auth.uid equivalent): ${user.uid}`);
+    console.log(`[Send Friend Request] Current User Profile DisplayName: ${currentUserProfile.displayName}`);
+    console.log(`[Send Friend Request] Target User UID: ${targetUser.uid}, DisplayName: ${targetUser.displayName}`);
+
     try {
-      // Simplified check: if any request exists between these two users, consider it handled for now
-      const existingRequestQuery = query(collection(db, "friendRequests"),
-        where("senderId", "in", [user.uid, targetUser.uid]),
-        where("receiverId", "in", [user.uid, targetUser.uid]));
-      const existingSnap = await getDocs(existingRequestQuery);
-      if (!existingSnap.empty) {
-         toast({ title: "Request Exists", description: "A friend request already exists or was handled.", variant: "default" });
-         setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
-         return;
-      }
-      if (currentUserProfile.friends?.includes(targetUser.uid)) {
-        toast({ title: "Already Friends", description: `You are already friends with ${targetUser.displayName}.`, variant: "default" });
+      // Check if a request (pending or accepted) already exists between these two users
+      const q1 = query(collection(db, "friendRequests"), where("senderId", "==", user.uid), where("receiverId", "==", targetUser.uid));
+      const q2 = query(collection(db, "friendRequests"), where("senderId", "==", targetUser.uid), where("receiverId", "==", user.uid));
+      const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+
+      if (!snap1.empty || !snap2.empty) {
+        const existingRequest = snap1.docs[0]?.data() || snap2.docs[0]?.data();
+        if (existingRequest?.status === 'pending') {
+            toast({ title: "Request Already Pending", description: "A friend request is already pending with this user.", variant: "default" });
+        } else if (existingRequest?.status === 'accepted' || currentUserProfile.friends?.includes(targetUser.uid)) {
+            toast({ title: "Already Friends", description: `You are already friends with ${targetUser.displayName}.`, variant: "default" });
+        } else {
+             toast({ title: "Request Exists", description: "A friend request was previously handled or exists.", variant: "default" });
+        }
+        setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' })); // Mark as 'sent' to update UI
         return;
       }
 
-      const newRequest: Omit<FriendRequest, "id"> = {
-        senderId: user.uid,
-        senderDisplayName: currentUserProfile.displayName,
+
+      const newRequestData = {
+        senderId: user.uid, // This is crucial for the security rule
+        senderDisplayName: currentUserProfile.displayName || "Anonymous User",
         senderPhotoURL: currentUserProfile.photoURL || null,
         receiverId: targetUser.uid,
-        status: "pending",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        status: "pending" as FriendRequest['status'],
+        createdAt: serverTimestamp(), // Use serverTimestamp
+        updatedAt: serverTimestamp(), // Use serverTimestamp
       };
-      const requestRef = await addDoc(collection(db, "friendRequests"), { ...newRequest, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      setPendingFriendRequests(prev => [...prev, {id: requestRef.id, ...newRequest}]);
+
+      console.log('[Send Friend Request] Data to be sent to Firestore (request.resource.data equivalent):', JSON.stringify(newRequestData, (key, value) => {
+        // Firestore serverTimestamp objects don't serialize well, so represent them as strings for logging
+        if (value && typeof value === 'object' && value.hasOwnProperty('_methodName') && value._methodName === 'serverTimestamp') {
+          return 'FieldValue.serverTimestamp()';
+        }
+        return value;
+      }, 2));
+
+      const requestRef = await addDoc(collection(db, "friendRequests"), newRequestData);
+      // No need to manually update pendingFriendRequests if using onSnapshot listener
       setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
       toast({ title: "Friend Request Sent", description: `Request sent to ${targetUser.displayName}.` });
     } catch (error: any) {
-      console.error("Error sending friend request:", error);
+      console.error("[Send Friend Request] Firestore Error:", error);
       setRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'error' }));
-      toast({ title: "Error", description: `Could not send request: ${error.message}`, variant: "destructive" });
+      toast({ title: "Error Sending Request", description: `Could not send request: ${error.message}`, variant: "destructive" });
     }
   };
 
   const handleRequestToJoinNetwork = async (targetUser: AppUserProfile) => {
-    if (!user || !currentUserProfile) return;
+    if (!user || !currentUserProfile) {
+      toast({ title: "Authentication Error", description: "Please ensure you are logged in.", variant: "destructive" });
+      return;
+    }
     setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sending' }));
     try {
-        // Check if already a member or if a request is pending
         if (currentUserProfile.memberOfNetworks?.includes(targetUser.uid)) {
             toast({ title: "Already a Member", description: `You are already a member of ${targetUser.displayName}'s network.`, variant: "default" });
             setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
@@ -176,23 +226,29 @@ export default function FriendsPage() {
             return;
         }
 
-        const newRequest: Omit<NetworkJoinRequest, "id"> = {
+        const newRequestData = {
             senderId: user.uid,
-            senderDisplayName: currentUserProfile.displayName,
+            senderDisplayName: currentUserProfile.displayName || "Anonymous User",
             senderPhotoURL: currentUserProfile.photoURL || null,
-            networkOwnerId: targetUser.uid, // targetUser is the owner of the network
-            status: "pending",
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
+            networkOwnerId: targetUser.uid,
+            status: "pending" as NetworkJoinRequest['status'],
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
         };
-        const requestRef = await addDoc(collection(db, "networkJoinRequests"), { ...newRequest, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        setPendingNetworkRequests(prev => [...prev, { id: requestRef.id, ...newRequest }]);
+        console.log('[Network Join Request] Data to be sent to Firestore:', JSON.stringify(newRequestData, (key, value) => {
+          if (value && typeof value === 'object' && value.hasOwnProperty('_methodName') && value._methodName === 'serverTimestamp') {
+            return 'FieldValue.serverTimestamp()';
+          }
+          return value;
+        }, 2));
+
+        await addDoc(collection(db, "networkJoinRequests"), newRequestData);
         setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'sent' }));
         toast({ title: "Network Join Request Sent", description: `Request sent to join ${targetUser.displayName}'s network.` });
     } catch (error: any) {
-        console.error("Error sending network join request:", error);
+        console.error("[Network Join Request] Firestore Error:", error);
         setNetworkRequestStatus(prev => ({ ...prev, [targetUser.uid]: 'error' }));
-        toast({ title: "Error", description: `Could not send join request: ${error.message}`, variant: "destructive" });
+        toast({ title: "Error Sending Join Request", description: `Could not send join request: ${error.message}`, variant: "destructive" });
     }
   };
 
@@ -225,6 +281,10 @@ export default function FriendsPage() {
     }
      if (networkRequestStatus[targetUserId] === 'sending') {
         return { text: "Sending...", disabled: true, icon: <Loader2 className="mr-2 animate-spin" />, variant: "default" as const };
+    }
+    // User cannot join their own network
+    if (currentUserProfile?.uid === targetUserId) {
+        return { text: "Your Network", disabled: true, icon: <Network className="mr-2" />, variant: "outline" as const };
     }
     return { text: "Join Network", disabled: false, icon: <Network className="mr-2" />, variant: "default" as const };
   };
@@ -320,7 +380,7 @@ export default function FriendsPage() {
                   <p className="font-semibold text-lg">{u.displayName || "Anonymous User"}</p>
                   <p className="text-sm text-muted-foreground">{u.email || "No email"}</p>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-border">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto pt-2 sm:pt-0 sm:border-t-0 border-t border-border">
                   <Button
                     onClick={() => friendButtonState.action ? friendButtonState.action() : handleSendFriendRequest(u)}
                     disabled={friendButtonState.disabled || requestStatus[u.uid] === 'sending'}
@@ -350,3 +410,5 @@ export default function FriendsPage() {
     </div>
   );
 }
+
+    
