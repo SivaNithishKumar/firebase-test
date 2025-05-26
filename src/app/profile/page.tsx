@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserCircle, Mail, CalendarDays, Users, UserPlus, UserCheck, UserX, Loader2, Network, UserMinus, UsersRound } from "lucide-react";
 import { format } from 'date-fns';
-import { db, Timestamp } from "@/lib/firebase";
+import { db } from "@/lib/firebase"; // Timestamp is exported from here
 import { 
   doc, 
   getDoc, 
@@ -26,6 +26,7 @@ import {
   updateDoc,
   deleteDoc,
   runTransaction,
+  Timestamp, // Explicitly import Timestamp if not re-exported from lib/firebase
   setDoc
 } from "firebase/firestore";
 import type { AppUserProfile, FriendRequest, NetworkJoinRequest } from "@/types";
@@ -89,23 +90,36 @@ export default function ProfilePage() {
           const userProfileData = convertAppUserProfileTimestamp(profileSnap.data());
           setProfile(userProfileData);
 
+          // Fetch friends details
           if (userProfileData.friends && userProfileData.friends.length > 0) {
-            const friendPromises = userProfileData.friends.map(friendId => getDoc(doc(db, "userProfiles", friendId)));
-            const friendDocs = await Promise.all(friendPromises);
-            setFriends(friendDocs.filter(docSnap => docSnap.exists()).map(docSnap => convertAppUserProfileTimestamp(docSnap.data() as AppUserProfile)));
+            try {
+              const friendPromises = userProfileData.friends.map(friendId => getDoc(doc(db, "userProfiles", friendId)));
+              const friendDocs = await Promise.all(friendPromises);
+              setFriends(friendDocs.filter(docSnap => docSnap.exists()).map(docSnap => convertAppUserProfileTimestamp(docSnap.data() as AppUserProfile)));
+            } catch (error) {
+                console.error("[ProfilePage] Error fetching friends details:", error);
+                setFriends([]); // Reset or handle error as appropriate
+            }
           } else {
             setFriends([]);
           }
 
+          // Fetch network members details
           if (userProfileData.myNetworkMembers && userProfileData.myNetworkMembers.length > 0) {
-              const memberPromises = userProfileData.myNetworkMembers.map(memberId => getDoc(doc(db, "userProfiles", memberId)));
-              const memberDocs = await Promise.all(memberPromises);
-              setMyNetworkMembersList(memberDocs.filter(docSnap => docSnap.exists()).map(docSnap => convertAppUserProfileTimestamp(docSnap.data() as AppUserProfile)));
+              try {
+                const memberPromises = userProfileData.myNetworkMembers.map(memberId => getDoc(doc(db, "userProfiles", memberId)));
+                const memberDocs = await Promise.all(memberPromises);
+                setMyNetworkMembersList(memberDocs.filter(docSnap => docSnap.exists()).map(docSnap => convertAppUserProfileTimestamp(docSnap.data() as AppUserProfile)));
+              } catch (error) {
+                console.error("[ProfilePage] Error fetching network members details:", error);
+                setMyNetworkMembersList([]);
+              }
           } else {
               setMyNetworkMembersList([]);
           }
+
         } else {
-          console.warn("[ProfilePage] User profile not found for UID:", user.uid);
+          console.warn("[ProfilePage] User profile not found for UID:", user.uid, "Attempting to create one.");
           const basicProfile: AppUserProfile = {
             uid: user.uid,
             displayName: user.displayName || "User",
@@ -118,11 +132,11 @@ export default function ProfilePage() {
           };
           try {
             await setDoc(profileRef, { ...basicProfile, createdAt: serverTimestamp() });
-            setProfile(convertAppUserProfileTimestamp(basicProfile));
+            // setProfile(convertAppUserProfileTimestamp(basicProfile)); // The onSnapshot will update this
             console.log("[ProfilePage] Created basic profile for UID:", user.uid);
           } catch (error) {
             console.error("[ProfilePage] Error creating basic profile:", error);
-            setProfile(null);
+            setProfile(null); // Could not create, set to null
           }
         }
         setLoadingProfile(false);
@@ -164,24 +178,42 @@ export default function ProfilePage() {
   }, [user, toast, router]);
 
   const handleAcceptFriendRequest = async (request: FriendRequest) => {
-    if (!user || !request.senderId || !profile) return;
+    if (!user || !request.senderId || !profile) {
+      toast({ title: "Error", description: "Missing user, profile, or sender information.", variant: "destructive" });
+      return;
+    }
     setProcessingRequestId(request.id);
-    const batch = writeBatch(db);
+    console.log(`[Friend Accept] Current User ${user.uid} (${profile.displayName}) accepting request ${request.id} from Sender ${request.senderId} (${request.senderDisplayName})`);
+
     const requestRef = doc(db, "friendRequests", request.id);
     const currentUserProfileRef = doc(db, "userProfiles", user.uid);
     const senderProfileRef = doc(db, "userProfiles", request.senderId);
 
-    console.log(`[Friend Accept] Current User ${user.uid} (${profile.displayName}) accepting request ${request.id} from Sender ${request.senderId} (${request.senderDisplayName})`);
-    console.log(`[Friend Accept] Batch Details:
+    try {
+      await runTransaction(db, async (transaction) => {
+        const currentUserDoc = await transaction.get(currentUserProfileRef);
+        const senderDoc = await transaction.get(senderProfileRef);
+
+        if (!currentUserDoc.exists()) {
+          throw new Error(`Current user profile (UID: ${user.uid}) does not exist.`);
+        }
+        if (!senderDoc.exists()) {
+          throw new Error(`Sender profile (UID: ${request.senderId}) does not exist.`);
+        }
+        
+        // const currentUserData = currentUserDoc.data() as AppUserProfile; // Not strictly needed for this update logic
+        // const senderData = senderDoc.data() as AppUserProfile; // Not strictly needed for this update logic
+
+        console.log(`[Friend Accept Transaction] Batch Details:
       1. Update friendRequest ${request.id} to accepted.
       2. Current User (${user.uid}) adds ${request.senderId} to their friends.
       3. Sender (${request.senderId}) adds ${user.uid} to their friends.`);
 
-    try {
-      batch.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
-      batch.update(currentUserProfileRef, { friends: arrayUnion(request.senderId) });
-      batch.update(senderProfileRef, { friends: arrayUnion(user.uid) });
-      await batch.commit();
+        transaction.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
+        // arrayUnion handles the case where the field might not exist yet, by creating it as an array with the new element.
+        transaction.update(currentUserProfileRef, { friends: arrayUnion(request.senderId) });
+        transaction.update(senderProfileRef, { friends: arrayUnion(user.uid) });
+      });
       toast({ title: "Friend Request Accepted", description: `You are now friends with ${request.senderDisplayName || 'User'}.` });
     } catch (error: any) {
       console.error(`[Friend Accept] Error accepting friend request ${request.id}:`, error);
@@ -238,32 +270,34 @@ export default function ProfilePage() {
       return;
     }
     setProcessingRequestId(request.id);
+    console.log(`[Network Join Accept] Network Owner ${user.uid} (Profile: ${profile.displayName}) accepting request ${request.id} from Sender ${request.senderId} (${request.senderDisplayName})`);
+    
     const requestRef = doc(db, "networkJoinRequests", request.id);
     const networkOwnerProfileRef = doc(db, "userProfiles", user.uid); // Current user is the network owner
     const senderProfileRef = doc(db, "userProfiles", request.senderId);
 
-    console.log(`[Network Join Accept] Network Owner ${user.uid} (Profile: ${profile.displayName}) accepting request ${request.id} from Sender ${request.senderId} (${request.senderDisplayName})`);
-    
     try {
       await runTransaction(db, async (transaction) => {
         const networkOwnerDoc = await transaction.get(networkOwnerProfileRef);
         const senderDoc = await transaction.get(senderProfileRef);
 
         if (!networkOwnerDoc.exists()) {
-          throw new Error("Network owner profile does not exist.");
+          throw new Error(`Network owner profile (UID: ${user.uid}) does not exist.`);
         }
         if (!senderDoc.exists()) {
-          throw new Error("Sender profile does not exist.");
+          throw new Error(`Sender profile (UID: ${request.senderId}) does not exist.`);
         }
+        
         const networkOwnerData = networkOwnerDoc.data() as AppUserProfile;
         const senderData = senderDoc.data() as AppUserProfile;
 
-        console.log(`[Network Join Accept Transaction] Batch Details:
+        console.log(`[Network Join Accept Transaction] Details:
           1. Update networkJoinRequest ${request.id} to accepted.
-          2. Network Owner (${user.uid}) adds ${request.senderId} to their myNetworkMembers. Current members: ${JSON.stringify(networkOwnerData.myNetworkMembers || [])}
-          3. Sender (${request.senderId}) adds Network Owner (${user.uid}) to their memberOfNetworks. Current networks: ${JSON.stringify(senderData.memberOfNetworks || [])}`);
+          2. Network Owner (${user.uid}) current myNetworkMembers: ${JSON.stringify(networkOwnerData.myNetworkMembers || [])}, adding ${request.senderId}.
+          3. Sender (${request.senderId}) current memberOfNetworks: ${JSON.stringify(senderData.memberOfNetworks || [])}, adding Network Owner (${user.uid}).`);
         
         transaction.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
+        // arrayUnion handles creating the field if it doesn't exist
         transaction.update(networkOwnerProfileRef, { myNetworkMembers: arrayUnion(request.senderId) });
         transaction.update(senderProfileRef, { memberOfNetworks: arrayUnion(user.uid) });
       });
@@ -294,17 +328,19 @@ export default function ProfilePage() {
   const handleRemoveNetworkMember = async (memberId: string) => {
     if (!user || !memberId || !profile) return;
     setProcessingRequestId(memberId);
-    const batch = writeBatch(db);
+    
     const networkOwnerProfileRef = doc(db, "userProfiles", user.uid); // Current user is the network owner
     const memberProfileRef = doc(db, "userProfiles", memberId);
     const removedMember = myNetworkMembersList.find(m => m.uid === memberId);
 
     console.log(`[Remove Member] Network Owner ${user.uid} (${profile.displayName}) removing member ${memberId} (${removedMember?.displayName})`);
-    console.log(`[Remove Member] Batch Details:
+    
+    try {
+      const batch = writeBatch(db);
+      console.log(`[Remove Member] Batch Details:
       1. Network Owner (${user.uid}) removes ${memberId} from their myNetworkMembers.
       2. Member (${memberId}) removes Network Owner (${user.uid}) from their memberOfNetworks.`);
 
-    try {
       batch.update(networkOwnerProfileRef, { myNetworkMembers: arrayRemove(memberId) });
       batch.update(memberProfileRef, { memberOfNetworks: arrayRemove(user.uid) });
       await batch.commit();
@@ -343,12 +379,10 @@ export default function ProfilePage() {
   }
   
   if (!user && !authLoading) {
-    // This case should be handled by the top-level useEffect redirect, but as a fallback:
     return <div className="text-center">Please log in to view your profile.</div>;
   }
 
   if (!profile && !loadingProfile && user) {
-    // Profile data might still be loading or doesn't exist yet (e.g., for a very new user if onSnapshot hasn't fired)
     return <div className="text-center">Loading profile data or profile not found...</div>;
   }
 
@@ -444,3 +478,6 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+
+    
