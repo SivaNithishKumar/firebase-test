@@ -16,7 +16,7 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
-  type Timestamp, // Added Timestamp import
+  Timestamp, // Imported Timestamp
   getDocs,
   where,
   doc,
@@ -194,7 +194,6 @@ export default function FeedPage() {
               agentId: agent.id, agentName: agent.name, type: decisionOutput.reactionType,
               createdAt: Date.now(), 
               id: `${agent.id}-${Date.now()}-reaction-${Math.random().toString(36).substring(2, 9)}`,
-              // Only add message if it's a non-empty string
               ...(decisionOutput.reactionMessage && decisionOutput.reactionMessage.trim() !== "" && { message: decisionOutput.reactionMessage.trim() }),
             };
             firestoreUpdates.reactions = arrayUnion(reactionDataPayload);
