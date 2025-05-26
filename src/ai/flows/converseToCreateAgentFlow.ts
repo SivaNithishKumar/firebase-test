@@ -55,29 +55,29 @@ Your goal is to collaboratively fill out the **currentAgentDraft** fields based 
 - avatarUrl: A URL for the agent's avatar. If the user doesn't provide one, or if the **name** field is populated in the **updatedAgentDraft** and **avatarUrl** is empty or a default placeholder, you MUST suggest an avatar using the format 'https://placehold.co/128x128/ABABAB/FFFFFF.png?text=XX', where XX are the first two initials of the agent's name. If no name is available yet, use 'PN' for the initials.
 
 Your Interaction Style:
-1.  **CRUCIAL FIRST STEP**: Before generating any response, you **MUST** carefully review the **currentAgentDraft** object that you receive as part of your input. This object contains all previously gathered or pre-filled information about the agent. Your entire approach for the current turn depends on understanding what's already in this draft.
+1.  **CRUCIAL FIRST STEP**: Before generating any response, you **MUST** carefully review the **currentAgentDraft** (both the object passed to you and its textual representation in the prompt). This object contains all previously gathered or pre-filled information about the agent. Your entire approach for the current turn depends on understanding what's already in this draft.
 2.  **Acknowledge Existing Draft & Targeted Questions**:
-    *   If **currentAgentDraft** contains details (e.g., **name** is 'Rowan', **persona** is 'Loves chaos'), your **aiResponseMessage** **MUST** acknowledge these. Example: "Okay, we have the name Rowan for this agent who loves chaos. I see their persona is '...'. What kind of archetype do you think would best fit them?"
+    *   If the **currentAgentDraft** (as seen in the prompt text) contains details (e.g., **name** is 'Rowan', **persona** is 'Loves chaos'), your **aiResponseMessage** **MUST** acknowledge these. Example: "Okay, we have the name Rowan for this agent who loves chaos. I see their persona is '...'. What kind of archetype do you think would best fit them?"
     *   Do NOT ask for information that is already present and substantial in the **currentAgentDraft** unless the user explicitly wants to change it (e.g., if they say "Actually, let's change their name").
     *   **Prioritize the next logical empty or sparsely filled key field** (name, persona, archetype, psychologicalProfile, backstory, languageStyle) from the **currentAgentDraft**. For instance:
-        *   If **currentAgentDraft.name** is empty, your primary goal for this turn is to get a name.
-        *   If **name** is present but **persona** is empty, acknowledge the name and ask about their persona.
-        *   If **name** and **persona** are present but **archetype** is empty, acknowledge them and ask about the archetype. Continue this pattern.
+        *   If **currentAgentDraft.name** is empty or "Not set", your primary goal for this turn is to get a name.
+        *   If **name** is present but **persona** is empty or "Not set", acknowledge the name and ask about their persona.
+        *   If **name** and **persona** are present but **archetype** is empty or "Not set", acknowledge them and ask about the archetype. Continue this pattern.
     *   Ask one or two focused questions at a time based on what's missing in the **currentAgentDraft**.
 3.  **Be Creative & Proactive for *Specific Fields***: When you ask about a specific field and the user provides a brief or vague answer (e.g., "a funny agent" for persona, or "they like problems" for psychological traits), take initiative! Suggest a more detailed and creative expansion *for that specific field* in your **updatedAgentDraft**. Your suggestions should aim for hyper-realism. Always ask for user confirmation or adjustments after making such suggestions for a field.
 4.  **Constructing **updatedAgentDraft****: Your **updatedAgentDraft** output MUST be built as follows:
-    *   Start by taking an exact copy of all fields and their values from the input **currentAgentDraft**.
+    *   Start by taking an exact copy of all fields and their values from the input **currentAgentDraft** object.
     *   Then, ONLY modify or add values to fields in your **updatedAgentDraft** that were the direct subject of the current conversational turn (e.g., the user provided new information for a field, or you made a specific suggestion for a previously empty/sparse field that the user is considering).
-    *   Fields in the input **currentAgentDraft** that were already substantially filled by the user and were NOT discussed in the current turn MUST remain unchanged in your **updatedAgentDraft**. Do NOT regenerate or "improve" them unless explicitly asked to do so by the user for that specific field.
+    *   Fields in the input **currentAgentDraft** object that were already substantially filled by the user and were NOT discussed in the current turn MUST remain unchanged in your **updatedAgentDraft**. Do NOT regenerate or "improve" them unless explicitly asked to do so by the user for that specific field.
 5.  **Handling Requests to "Fill Remaining Fields" or "Complete Draft"**: If the user asks you to fill in the rest of the draft or complete missing fields:
-    *   You **MUST** preserve any substantial, user-provided information already present in the **currentAgentDraft** fields.
-    *   Focus your generation *only* on fields that are currently empty, contain placeholder text (like "Not set yet"), or have very minimal content.
+    *   You **MUST** preserve any substantial, user-provided information already present in the **currentAgentDraft** fields (as seen in the prompt text and the input object).
+    *   Focus your generation *only* on fields that are currently empty, contain placeholder text (like "Not set yet" or "Not set"), or have very minimal content.
     *   When generating for these empty/sparse fields, use the existing filled fields in **currentAgentDraft** as context to ensure consistency.
     *   Clearly indicate which fields you have generated content for in your **aiResponseMessage**.
 6.  **Confirmation**: When you make a suggestion for a field, ask the user for confirmation or if they'd like to refine it.
 7.  **Finalization ('isFinalized')**: Only set **isFinalized** to true when you genuinely believe all key fields (name, persona, archetype, psychologicalProfile, backstory, languageStyle) have substantial, well-developed content, and you've ideally touched upon most of them with the user. Before finalizing, you might say something like, "This is looking like a really interesting agent! We have details for their name, persona, backstory, and style. Are you happy with this draft, or is there anything else you'd like to add or change before we consider it complete?"
 
-Remember to populate ALL fields in the **updatedAgentDraft** you return, carrying over existing values from the input **currentAgentDraft** if they weren't changed in the current turn. The **userMessage** and **chatHistory** are your primary source for user intent in the current turn. The **currentAgentDraft** object is your primary source for existing agent details.
+Remember to populate ALL fields in the **updatedAgentDraft** you return, carrying over existing values from the input **currentAgentDraft** object if they weren't changed in the current turn. The **userMessage** and **chatHistory** are your primary source for user intent in the current turn. The textual representation of **currentAgentDraft** in the prompt is your primary reference for existing agent details for the current turn.
 `;
 
 const converseToCreateAgentPrompt = ai.definePrompt({
@@ -86,33 +86,48 @@ const converseToCreateAgentPrompt = ai.definePrompt({
   input: { schema: InternalConverseToCreateAgentInputSchema },
   output: { schema: InternalConverseToCreateAgentOutputSchema },
   prompt: (input) => {
-    // This prompt function now focuses only on constructing the conversation history.
-    // The SYSTEM_PROMPT handles the instructions for the AI's behavior.
-    let conversationTurn = "";
+    let fullPromptText = "Current Agent Draft Status:\n";
+    fullPromptText += `Name: ${input.currentAgentDraft.name || 'Not set'}\n`;
+    fullPromptText += `Persona: ${input.currentAgentDraft.persona || 'Not set'}\n`;
+    fullPromptText += `Archetype: ${input.currentAgentDraft.archetype || 'Not set'}\n`;
+    fullPromptText += `Psychological Profile: ${input.currentAgentDraft.psychologicalProfile || 'Not set'}\n`;
+    fullPromptText += `Backstory: ${input.currentAgentDraft.backstory || 'Not set'}\n`;
+    fullPromptText += `Language Style: ${input.currentAgentDraft.languageStyle || 'Not set'}\n`;
+    fullPromptText += `Avatar URL: ${input.currentAgentDraft.avatarUrl || 'Not set'}\n\n`;
+
+    fullPromptText += "Conversation History:\n";
     input.chatHistory.forEach(msg => {
-      conversationTurn += `${msg.role === 'user' ? 'User' : 'AI Assistant'}: ${msg.content}\n`;
+      // Append user's message from chatHistory if it's the last one and matches input.userMessage
+      // Otherwise, the frontend might append it twice, or it might be missing if not handled by frontend
+      if (msg.role === 'user' && msg.content === input.userMessage && input.chatHistory.indexOf(msg) === input.chatHistory.length -1) {
+        fullPromptText += `User: ${msg.content}\n`;
+      } else {
+        fullPromptText += `${msg.role === 'user' ? 'User' : 'AI Assistant'}: ${msg.content}\n`;
+      }
     });
-    // The userMessage is assumed to be the last item in chatHistory if the frontend appends it.
-    // If not, it needs to be explicitly appended here.
-    // For safety, ensure userMessage is included, especially if chatHistory might not have it.
-    // if (input.userMessage && (input.chatHistory.length === 0 || input.chatHistory[input.chatHistory.length - 1].content !== input.userMessage)) {
-    //   conversationTurn += `User: ${input.userMessage}\n`;
-    // }
-    conversationTurn += `AI Assistant:`; // Cue for AI to complete its turn
-    return conversationTurn;
+
+    // Ensure userMessage is included if it wasn't the last item in chatHistory
+    const lastChatMessage = input.chatHistory[input.chatHistory.length - 1];
+    if (!lastChatMessage || lastChatMessage.content !== input.userMessage || lastChatMessage.role !== 'user') {
+        if (input.userMessage) { // Only add if userMessage is not empty
+             fullPromptText += `User: ${input.userMessage}\n`;
+        }
+    }
+    
+    fullPromptText += `\nAI Assistant (Your response based on ALL above context, including the current draft status, history, and latest user message):`;
+    return fullPromptText;
   }
 });
 
 
 export async function converseToCreateAgent(input: ConverseToCreateAgentInput): Promise<ConverseToCreateAgentOutput> {
-  // Ensure the prompt input correctly reflects the structure expected by ai.definePrompt's prompt function
   const promptInputPayload: InternalConverseToCreateAgentInput = {
-    chatHistory: input.chatHistory, // Assuming this now includes the userMessage
+    chatHistory: input.chatHistory,
     currentAgentDraft: input.currentAgentDraft,
-    userMessage: input.userMessage, // Still passed for clarity, though it's also the last in chatHistory
+    userMessage: input.userMessage,
   };
   
-  console.log('[converseToCreateAgentFlow] Input to LLM:', JSON.stringify(promptInputPayload, null, 2));
+  console.log('[converseToCreateAgentFlow] Input to LLM (payload object):', JSON.stringify(promptInputPayload, null, 2));
 
   const { output } = await converseToCreateAgentPrompt(promptInputPayload);
 
@@ -120,20 +135,16 @@ export async function converseToCreateAgent(input: ConverseToCreateAgentInput): 
     console.error('[converseToCreateAgentFlow] Error: LLM returned null output.');
     return {
       aiResponseMessage: "Sorry, I encountered an issue and couldn't process that. Could you try again?",
-      updatedAgentDraft: input.currentAgentDraft, // Return the draft as it was before the failed call
+      updatedAgentDraft: input.currentAgentDraft,
       isFinalized: false,
     };
   }
 
-  // Ensure all fields from the input currentAgentDraft are carried over if not present in output.updatedAgentDraft
-  // and that output.updatedAgentDraft fields take precedence.
-  // Create a new object to avoid directly mutating input.currentAgentDraft if it's a shared reference
   const finalDraft: Partial<AgentFormData> = { 
     ...input.currentAgentDraft, 
     ...output.updatedAgentDraft 
   };
 
-  // Auto-generate avatar if name exists and avatar is placeholder, empty, or a default "PN" or "XX" one.
   if (finalDraft.name && (!finalDraft.avatarUrl || finalDraft.avatarUrl.trim() === "" || finalDraft.avatarUrl.includes("?text=PN") || finalDraft.avatarUrl.includes("?text=XX") || finalDraft.avatarUrl.startsWith("https://placehold.co/128x128/ABABAB/FFFFFF.png"))) {
     const nameParts = finalDraft.name.trim().split(/\s+/).filter(part => part.length > 0);
     let initials = '';
@@ -141,25 +152,24 @@ export async function converseToCreateAgent(input: ConverseToCreateAgentInput): 
     if (nameParts.length > 0 && nameParts[0].length > 0) {
         initials += nameParts[0][0];
     }
-    // Take initial of last part if more than one part, otherwise take second char of first part if exists
     if (nameParts.length > 1 && nameParts[nameParts.length - 1].length > 0) {
         initials += nameParts[nameParts.length - 1][0];
     } else if (nameParts.length === 1 && nameParts[0].length > 1) {
         initials += nameParts[0][1];
-    } else if (initials.length === 1 && finalDraft.name.length > 1) { // Fallback if only one initial was gathered but name is longer
-        initials += finalDraft.name.replace(/\s/g, '')[1] || ''; // Try second char of concatenated name
+    } else if (initials.length === 1 && finalDraft.name.length > 1) { 
+        initials += finalDraft.name.replace(/\s/g, '')[1] || '';
     }
     
     initials = initials.substring(0, 2).toUpperCase();
 
-    if (initials.length === 1 && finalDraft.name.length === 1) { // Handle single letter name by repeating the initial
+    if (initials.length === 1 && finalDraft.name.length === 1) {
         initials += initials;
-    } else if (initials.length === 0 && finalDraft.name.length > 0) { // Default if no initials could be formed but name exists
+    } else if (initials.length === 0 && finalDraft.name.length > 0) {
         initials = finalDraft.name.substring(0, Math.min(2, finalDraft.name.length)).toUpperCase();
-        if (initials.length === 1) initials += initials; // Repeat if still single
+        if (initials.length === 1) initials += initials;
     }
     
-    if (!initials || initials.length < 2) initials = 'PN'; // Absolute fallback
+    if (!initials || initials.length < 2) initials = 'PN';
 
     finalDraft.avatarUrl = `https://placehold.co/128x128/ABABAB/FFFFFF.png?text=${initials}`;
   }
@@ -174,5 +184,4 @@ export async function converseToCreateAgent(input: ConverseToCreateAgentInput): 
   console.log('[converseToCreateAgentFlow] Output from LLM (after processing):', JSON.stringify(validatedOutput, null, 2));
   return validatedOutput;
 }
-
 
