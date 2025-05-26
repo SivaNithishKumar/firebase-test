@@ -7,9 +7,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { ThumbsUp, MessageCircle, Share2, Bot, Send, Trash2 } from "lucide-react";
+import { ThumbsUp, MessageCircle, Share2, Bot, Send, Trash2, Reply as ReplyIcon } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc, arrayUnion, arrayRemove, deleteDoc, collection, getDocs, query, where, type Timestamp } from "firebase/firestore";
@@ -41,12 +41,20 @@ const convertTimestamp = (timestampField: any): number | any => {
     return timestampField;
   };
 
+interface ReplyingToState {
+  commentId: string;
+  authorName: string;
+}
+
 export function PostCard({ post, currentUser }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
   const [userAgents, setUserAgents] = useState<Agent[]>([]);
   const { toast } = useToast();
+  const [replyingTo, setReplyingTo] = useState<ReplyingToState | null>(null);
+  const commentInputRef = useRef<HTMLTextAreaElement>(null);
+
 
   useEffect(() => {
     const fetchUserAgents = async () => {
@@ -91,29 +99,22 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       return;
     }
 
-    // For manual reactions, let's assume the user's first agent reacts.
-    // More complex logic could allow choosing which agent reacts.
     const reactingAgent = userAgents[0]; 
     const postRef = doc(db, "posts", post.id);
     console.log(`[Manual Reaction ${post.id}] Agent ${reactingAgent.name} (ID: ${reactingAgent.id}) attempting to '${newReactionType}' post`);
 
     try {
       const currentReactions = post.reactions || [];
-      // Filter out all existing reactions from THIS agent
       const otherAgentsReactions = currentReactions.filter(r => r.agentId !== reactingAgent.id);
-      
       const thisAgentExistingReactionOfSameType = currentReactions.find(r => r.agentId === reactingAgent.id && r.type === newReactionType);
 
       let newReactionsArray: ReactionType[];
 
       if (thisAgentExistingReactionOfSameType) {
-        // User is toggling OFF this specific reaction type for this agent
-        newReactionsArray = otherAgentsReactions; // All other reactions by this agent were already filtered out
+        newReactionsArray = otherAgentsReactions; 
         console.log(`[Manual Reaction ${post.id}] Agent ${reactingAgent.name} removing reaction '${newReactionType}'.`);
         toast({ title: "Reaction Removed", description: `${reactingAgent.name} removed their ${newReactionType} reaction.` });
       } else {
-        // User is adding this newReactionType or changing to it.
-        // All other reactions by this agent are already removed by otherAgentsReactions filter. Add the new one.
         const newReactionToAdd: ReactionType = {
           agentId: reactingAgent.id,
           agentName: reactingAgent.name,
@@ -135,22 +136,25 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     }
   };
 
-  const triggerAgentReplyToComment = async (triggeringUserCommentContent: string, triggeringUserDisplayName: string) => {
-    if (!currentUser || userAgents.length === 0) {
-        console.warn(`[AI Reply Trigger ${post.id}] Current user or userAgents missing. Cannot trigger AI comment.`);
+  const triggerAgentReplyToComment = async (triggeringUserCommentContent: string, triggeringUserDisplayName: string, fullCommentThread: CommentType[]) => {
+    if (!currentUser) { // Ensure current user context is available for safety, though agent is post owner's
+        console.warn(`[AI Reply Trigger ${post.id}] Current user context missing. Cannot robustly trigger AI comment reply.`);
         return;
     }
+    if (!post.userId) {
+        console.warn(`[AI Reply Trigger ${post.id}] Post owner ID (post.userId) is missing. Cannot trigger AI comment reply.`);
+        return;
+    }
+    console.log(`[AI Reply Trigger ${post.id}] Attempting to trigger reply from one of post owner's (${post.userId}) agents.`);
 
-    // Pick a random agent of the POST OWNER to respond to the user's comment.
-    // Fetch post owner's agents.
     let postOwnerAgents: Agent[] = [];
     try {
         const agentsQuery = query(collection(db, "agents"), where("userId", "==", post.userId));
         const agentSnapshot = await getDocs(agentsQuery);
         agentSnapshot.forEach(docSnap => postOwnerAgents.push({ id: docSnap.id, ...docSnap.data(), createdAt: convertTimestamp(docSnap.data().createdAt) } as Agent));
-    } catch (e) {
+    } catch (e: any) {
         console.error(`[AI Reply Trigger ${post.id}] Error fetching post owner's agents:`, e);
-        toast({ title: "AI Reply Error", description: "Could not fetch agents to reply.", variant: "destructive" });
+        toast({ title: "AI Reply Error", description: `Could not fetch agents to reply: ${e.message}`, variant: "destructive" });
         return;
     }
     
@@ -162,10 +166,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
 
     console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} (ID: ${respondingAgent.id}) preparing to respond to comment by ${triggeringUserDisplayName}`);
 
-    const existingCommentsForAI = (post.comments || []).map(c => `${c.authorName}: ${c.content}`);
-    // Add the comment that triggered this reply to the context for the AI
-    const currentThreadForAI = [...existingCommentsForAI, `${triggeringUserDisplayName}: ${triggeringUserCommentContent}`];
-
+    const existingCommentsForAIContext = fullCommentThread.map(c => `${c.authorName}: ${c.content}`);
 
     const aiInput: AgentDecisionInput = {
       agentName: respondingAgent.name,
@@ -174,11 +175,11 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       agentPsychologicalProfile: respondingAgent.psychologicalProfile,
       agentBackstory: respondingAgent.backstory,
       agentLanguageStyle: respondingAgent.languageStyle,
-      agentMemorySummary: `Replying to a comment by ${triggeringUserDisplayName} on a post by ${post.userDisplayName}.`, // Simplified memory for reply
+      agentMemorySummary: `Replying to a comment by ${triggeringUserDisplayName} on a post by ${post.userDisplayName || 'Original Poster'}. The latest comment in the thread is: "${triggeringUserCommentContent}".`,
       postContent: post.content,
-      postImageUrl: post.imageUrl,
+      postImageUrl: post.imageUrl || null,
       postAuthorName: post.userDisplayName || "Original Poster",
-      existingComments: currentThreadForAI, 
+      existingComments: existingCommentsForAIContext, 
       isReplyContext: true,
     };
     console.log(`[AI Reply Trigger ${post.id}] Input for agent ${respondingAgent.name}:`, JSON.stringify(aiInput, null, 2));
@@ -187,7 +188,6 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       const aiOutput: AgentDecisionOutput = await agentDecision(aiInput);
       console.log(`[AI Reply Trigger ${post.id}] Output from agent ${respondingAgent.name}:`, JSON.stringify(aiOutput, null, 2));
 
-      // TODO: Persist aiOutput.updatedMemorySummary for the agent
 
       if (aiOutput.decision === "COMMENT_ONLY" || aiOutput.decision === "REACT_AND_COMMENT") {
         if (aiOutput.commentText && aiOutput.commentText.trim() !== "") {
@@ -199,6 +199,9 @@ export function PostCard({ post, currentUser }: PostCardProps) {
                 content: aiOutput.commentText,
                 createdAt: Date.now(),
                 id: `${respondingAgent.id}-comment-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                // If the agent's reply is to the triggering user's comment directly
+                replyToCommentId: fullCommentThread.length > 0 ? fullCommentThread[fullCommentThread.length -1].id : undefined,
+                replyToAuthorName: fullCommentThread.length > 0 ? fullCommentThread[fullCommentThread.length -1].authorName : undefined,
             };
 
             console.log(`[AI Reply Trigger ${post.id}] Agent ${respondingAgent.name} attempting to add comment to Firestore:`, JSON.stringify(agentCommentData));
@@ -226,7 +229,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser) return;
     setIsCommenting(true);
-    const submittedCommentContent = newComment; // Capture before reset
+    const submittedCommentContent = newComment; 
     const userDisplayNameForAI = currentUser.displayName || "Anonymous User";
     console.log(`[User Comment ${post.id}] User ${currentUser.uid} attempting to add comment: "${submittedCommentContent}"`);
 
@@ -238,6 +241,10 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       content: submittedCommentContent,
       createdAt: Date.now(),
       id: `${currentUser.uid}-comment-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      ...(replyingTo && { 
+        replyToCommentId: replyingTo.commentId,
+        replyToAuthorName: replyingTo.authorName,
+      }),
     };
 
     try {
@@ -246,11 +253,13 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       await updateDoc(postRef, { comments: arrayUnion(newCommentData) });
       console.log(`[User Comment ${post.id}] User comment added successfully to Firestore.`);
       
+      const updatedComments = [...(post.comments || []), newCommentData]; // Create the most up-to-date comment list
+
       setNewComment(""); 
+      setReplyingTo(null); // Clear replyingTo state
       toast({ title: "Comment Added", description: "Your comment has been posted." });
       
-      // Trigger agent response after user's comment is successfully added
-      await triggerAgentReplyToComment(submittedCommentContent, userDisplayNameForAI);
+      await triggerAgentReplyToComment(submittedCommentContent, userDisplayNameForAI, updatedComments);
 
     } catch (error: any) {
       console.error(`[User Comment ${post.id}] Error adding user comment:`, error);
@@ -275,6 +284,14 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       toast({ title: "Delete Error", description: `Could not delete post: ${error.message || 'Unknown error'}`, variant: "destructive" });
     }
   };
+
+  const startReply = (comment: CommentType) => {
+    setReplyingTo({ commentId: comment.id, authorName: comment.authorName });
+    setNewComment(`@${comment.authorName} `);
+    setShowComments(true); // Ensure comment section is open
+    commentInputRef.current?.focus();
+  };
+
 
   return (
     <Card className="overflow-hidden shadow-lg rounded-xl border">
@@ -336,7 +353,6 @@ export function PostCard({ post, currentUser }: PostCardProps) {
                 title={`${reaction.agentName} reacted: ${reaction.type}${reaction.message ? `\nMessage: "${reaction.message}"` : ''}`}
               >
                  <Bot className="h-3 w-3 mr-1"/> {reaction.type}
-                 {/* {reaction.message && <span className="ml-1 italic text-muted-foreground/80">&quot;{reaction.message}&quot;</span>} */}
               </div>
             ))}
             {post.reactions.length > 5 && (
@@ -368,14 +384,24 @@ export function PostCard({ post, currentUser }: PostCardProps) {
                   </Avatar>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                       <p className="text-xs font-semibold">
-                        {comment.authorName} {comment.agentId && <Bot className="inline h-3 w-3 ml-1 text-primary" />}
-                      </p>
+                       <div className="flex items-center gap-1">
+                        <p className="text-xs font-semibold">
+                          {comment.authorName} {comment.agentId && <Bot className="inline h-3 w-3 ml-1 text-primary" />}
+                        </p>
+                        <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-primary" onClick={() => startReply(comment)}>
+                            <ReplyIcon className="h-3 w-3" />
+                        </Button>
+                       </div>
                        <p className="text-xs text-muted-foreground">
                         {comment.createdAt ? formatDistanceToNow(new Date(convertTimestamp(comment.createdAt)), { addSuffix: true }) : 'just now'}
                       </p>
                     </div>
-                    <p className="text-xs whitespace-pre-wrap">{comment.content}</p>
+                    <p className="text-xs whitespace-pre-wrap">
+                      {comment.replyToAuthorName && (
+                        <span className="text-primary/80 font-medium">Replying to @{comment.replyToAuthorName}: </span>
+                      )}
+                      {comment.content}
+                    </p>
                   </div>
                 </div>
               ))
@@ -391,7 +417,8 @@ export function PostCard({ post, currentUser }: PostCardProps) {
                 </Avatar>
                 <div className="flex-1 flex items-center">
                 <Textarea
-                  placeholder="Write a comment..."
+                  ref={commentInputRef}
+                  placeholder={replyingTo ? `Replying to @${replyingTo.authorName}...` : "Write a comment..."}
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   className="mr-2 text-sm min-h-[40px] h-10 resize-none"
@@ -404,9 +431,15 @@ export function PostCard({ post, currentUser }: PostCardProps) {
                 </div>
               </div>
             )}
+             {replyingTo && (
+                <Button variant="ghost" size="sm" onClick={() => { setReplyingTo(null); setNewComment(""); }} className="text-xs text-muted-foreground w-full justify-start">
+                    Cancel reply to @{replyingTo.authorName}
+                </Button>
+            )}
           </div>
         )}
       </CardFooter>
     </Card>
   );
 }
+

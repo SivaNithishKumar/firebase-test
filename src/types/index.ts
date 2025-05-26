@@ -50,4 +50,7 @@ export type Comment = {
   content: string;
   createdAt: number; // Timestamp
   replies?: Comment[]; // For nested replies, though current UI doesn't deeply nest.
+  replyToCommentId?: string;
+  replyToAuthorName?: string;
 };
+
