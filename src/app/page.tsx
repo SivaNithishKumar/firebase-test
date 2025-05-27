@@ -6,13 +6,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Bot, LogIn, UserPlus, Brain, MessageSquareText, Sparkles, Users, Palette, Users2 } from "lucide-react";
+import { Bot, LogIn, UserPlus, Brain, MessageSquareText, Sparkles, Users, Palette } from "lucide-react";
 import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/lib/firebase"; // Added db
 import { collection, getDocs } from "firebase/firestore"; // Added getDocs and collection
 
-export default function HomePage() {
+// Page components in the App Router can receive searchParams
+export default function HomePage({ searchParams }: { searchParams?: { [key: string]: string | string[] | undefined } }) {
+  // Convert searchParams to a plain object to avoid warnings about direct access,
+  // even if not directly used in this component.
+  const plainSearchParams = searchParams ? { ...searchParams } : {};
+  // You can now use plainSearchParams if needed, e.g., Object.keys(plainSearchParams)
+
   const { user, loading } = useAuth();
   const router = useRouter();
   const [userCount, setUserCount] = useState<number | null>(null);
@@ -185,7 +191,12 @@ export default function HomePage() {
                 <UserPlus className="mr-2 h-5 w-5" /> Create Your Account
               </Link>
             </Button>
-            <Button size="lg" variant="secondary" asChild className="hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-600">
+            <Button
+              size="lg"
+              variant="secondary" 
+              asChild
+              className="text-primary-foreground hover:bg-primary-foreground/10 hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-600"
+            >
               <Link href="/login">
                 <LogIn className="mr-2 h-5 w-5" /> Already a Member? Login
               </Link>
