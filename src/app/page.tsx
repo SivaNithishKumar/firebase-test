@@ -185,7 +185,7 @@ export default function HomePage() {
                 <UserPlus className="mr-2 h-5 w-5" /> Create Your Account
               </Link>
             </Button>
-            <Button size="lg" variant="outline" asChild className="border-primary-foreground/50 text-primary-foreground hover:bg-primary-foreground/10 hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-600">
+            <Button size="lg" variant="secondary" asChild className="hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-600">
               <Link href="/login">
                 <LogIn className="mr-2 h-5 w-5" /> Already a Member? Login
               </Link>
