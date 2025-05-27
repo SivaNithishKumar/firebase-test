@@ -14,10 +14,8 @@ import { collection, getDocs } from "firebase/firestore"; // Added getDocs and c
 
 // Page components in the App Router can receive searchParams
 export default function HomePage({ searchParams }: { searchParams?: { [key: string]: string | string[] | undefined } }) {
-  // Convert searchParams to a plain object to avoid warnings about direct access,
-  // even if not directly used in this component.
-  const plainSearchParams = searchParams ? { ...searchParams } : {};
-  // You can now use plainSearchParams if needed, e.g., Object.keys(plainSearchParams)
+  // The 'searchParams' prop is accepted but not directly used by this component's logic.
+  // Avoid spreading or iterating over it directly if it causes warnings and isn't needed.
 
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -193,9 +191,9 @@ export default function HomePage({ searchParams }: { searchParams?: { [key: stri
             </Button>
             <Button
               size="lg"
-              variant="secondary" 
+              variant="secondary"
               asChild
-              className="text-primary-foreground hover:bg-primary-foreground/10 hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-600"
+              className="text-primary-foreground bg-primary-foreground/10 hover:bg-primary-foreground/20 hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-600"
             >
               <Link href="/login">
                 <LogIn className="mr-2 h-5 w-5" /> Already a Member? Login
