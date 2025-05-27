@@ -12,15 +12,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { db } from "@/lib/firebase";
 import { collection, getDocs } from "firebase/firestore";
 
-// Page components in the App Router can receive searchParams
-export default function HomePage({ searchParams: _searchParams }: { searchParams?: { [key: string]: string | string[] | undefined } }) {
-  // The 'searchParams' prop is accepted but not directly used by this component's logic.
-  // Avoid spreading or iterating over it directly if it causes warnings and isn't needed.
-
+// Explicitly define params in the props, even if unused in this specific component.
+export default function HomePage({
+  searchParams: _searchParams,
+  params: _params
+}: {
+  searchParams?: { [key: string]: string | string[] | undefined };
+  params?: { [key: string]: string | string[] | undefined };
+}) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [userCount, setUserCount] = useState<number | null>(null);
   const [loadingCount, setLoadingCount] = useState(true);
+
+  // The component does not use _searchParams or _params directly, so no enumeration happens here.
 
   useEffect(() => {
     if (!loading && user) {
@@ -29,7 +34,6 @@ export default function HomePage({ searchParams: _searchParams }: { searchParams
   }, [user, loading, router]);
 
   useEffect(() => {
-    // Fetch user count for display - this runs for unauthenticated users too
     const fetchUserCount = async () => {
       setLoadingCount(true);
       try {
@@ -38,19 +42,18 @@ export default function HomePage({ searchParams: _searchParams }: { searchParams
         setUserCount(querySnapshot.size);
       } catch (error) {
         console.error("Error fetching user count:", error);
-        setUserCount(null); // Set to null or a default on error
+        setUserCount(null);
       } finally {
         setLoadingCount(false);
       }
     };
 
-    if (!user) { // Only fetch if user is not logged in (to show on landing page)
-        fetchUserCount();
+    if (!user) {
+      fetchUserCount();
     } else {
-        setLoadingCount(false); // If user is logged in, we won't show the count here
+      setLoadingCount(false);
     }
   }, [user]);
-
 
   if (loading || (!loading && user)) {
     return (
@@ -85,7 +88,7 @@ export default function HomePage({ searchParams: _searchParams }: { searchParams
   return (
     <div className="flex flex-col items-center min-h-[calc(100vh-4rem)] bg-gradient-to-b from-background via-secondary/30 to-background text-foreground">
       {/* Hero Section */}
-      <section className="w-full py-16 md:py-24 text-center bg-background shadow-lg"> {/* Changed py-20 md:py-32 to py-16 md:py-24 */}
+      <section className="w-full py-16 md:py-24 text-center bg-background shadow-lg">
         <div className="container mx-auto px-4">
           <div className="animate-fade-in-up">
             <Bot className="h-24 w-24 mx-auto text-primary mb-6" />
@@ -111,7 +114,7 @@ export default function HomePage({ searchParams: _searchParams }: { searchParams
                   <LogIn className="mr-2 h-5 w-5" /> Login
                 </Link>
               </Button>
-              <Button size="lg" variant="outline" asChild className="hover:bg-primary/10 hover:scale-105 transition-transform duration-300">
+              <Button size="lg" variant="secondary" asChild className="hover:bg-primary/10 hover:scale-105 transition-transform duration-300">
                 <Link href="/signup">
                   <UserPlus className="mr-2 h-5 w-5" /> Sign Up
                 </Link>
@@ -191,7 +194,7 @@ export default function HomePage({ searchParams: _searchParams }: { searchParams
             </Button>
             <Button
               size="lg"
-              variant="secondary" 
+              variant="secondary"
               asChild
               className="text-primary bg-secondary hover:bg-secondary/80 hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-600"
             >
