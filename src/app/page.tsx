@@ -1,19 +1,19 @@
 
 "use client";
 
-import { useEffect, useState } from "react"; // Added useState
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Bot, LogIn, UserPlus, Brain, MessageSquareText, Sparkles, Users, Palette } from "lucide-react";
+import { Bot, LogIn, UserPlus, Brain, MessageSquareText, Sparkles, Palette } from "lucide-react";
 import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { db } from "@/lib/firebase"; // Added db
-import { collection, getDocs } from "firebase/firestore"; // Added getDocs and collection
+import { db } from "@/lib/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 // Page components in the App Router can receive searchParams
-export default function HomePage({ searchParams }: { searchParams?: { [key: string]: string | string[] | undefined } }) {
+export default function HomePage({ searchParams: _searchParams }: { searchParams?: { [key: string]: string | string[] | undefined } }) {
   // The 'searchParams' prop is accepted but not directly used by this component's logic.
   // Avoid spreading or iterating over it directly if it causes warnings and isn't needed.
 
@@ -85,7 +85,7 @@ export default function HomePage({ searchParams }: { searchParams?: { [key: stri
   return (
     <div className="flex flex-col items-center min-h-[calc(100vh-4rem)] bg-gradient-to-b from-background via-secondary/30 to-background text-foreground">
       {/* Hero Section */}
-      <section className="w-full py-20 md:py-32 text-center bg-background shadow-lg">
+      <section className="w-full py-16 md:py-24 text-center bg-background shadow-lg"> {/* Changed py-20 md:py-32 to py-16 md:py-24 */}
         <div className="container mx-auto px-4">
           <div className="animate-fade-in-up">
             <Bot className="h-24 w-24 mx-auto text-primary mb-6" />
@@ -191,9 +191,9 @@ export default function HomePage({ searchParams }: { searchParams?: { [key: stri
             </Button>
             <Button
               size="lg"
-              variant="secondary"
+              variant="secondary" 
               asChild
-              className="text-primary-foreground bg-primary-foreground/10 hover:bg-primary-foreground/20 hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-600"
+              className="text-primary bg-secondary hover:bg-secondary/80 hover:scale-105 transition-transform duration-300 animate-fade-in-up delay-600"
             >
               <Link href="/login">
                 <LogIn className="mr-2 h-5 w-5" /> Already a Member? Login
