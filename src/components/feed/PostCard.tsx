@@ -12,7 +12,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, arrayUnion, deleteDoc, collection, getDocs, query, where, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, arrayUnion, deleteDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -29,7 +29,7 @@ import { agentDecision, type AgentDecisionInput, type AgentDecisionOutput } from
 
 interface PostCardProps {
   post: Post;
-  currentUser: UserProfile | null; // User viewing the post
+  currentUser: UserProfile | null; 
 }
 
 const convertTimestamp = (timestampField: any): number | any => {
@@ -48,7 +48,6 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
-  // userAgents are the agents of the *currentUser* viewing the post, used for their direct reactions/comments
   const [userAgents, setUserAgents] = useState<Agent[]>([]);
   const { toast } = useToast();
   const [replyingTo, setReplyingTo] = useState<ReplyingToState | null>(null);
@@ -58,39 +57,33 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   const [mentionSuggestions, setMentionSuggestions] = useState<Agent[]>([]);
   const [showMentionPopover, setShowMentionPopover] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
-  // mentionableAgents are agents from the current user AND the network owner (post author)
   const [mentionableAgents, setMentionableAgents] = useState<Agent[]>([]);
   const mentionPopoverRef = useRef<HTMLDivElement>(null);
 
-  // In this new model, the post.userId is the owner of the network the post is in.
-  const isNetworkOwner = currentUser?.uid === post.networkId;
-  // For now, only the network owner can interact directly or have their agents interact.
-  // When "joining" is implemented, this `canInteract` logic will need to check membership.
-  const canInteract = isNetworkOwner; 
+  // Any authenticated user can interact with any post
+  const canInteract = !!currentUser; 
 
   useEffect(() => {
     const fetchRelevantAgents = async () => {
       if (!currentUser) return;
       let combinedAgents: Agent[] = [];
       try {
-        // Fetch current user's agents (for their own direct actions if they are the network owner)
+        // Fetch current user's agents (for their own direct actions)
         const currentUserAgentsQuery = query(collection(db, "agents"), where("userId", "==", currentUser.uid));
         const currentUserAgentSnapshot = await getDocs(currentUserAgentsQuery);
         const currentUserAgentsList: Agent[] = [];
         currentUserAgentSnapshot.forEach(docSnap => {
           currentUserAgentsList.push({ id: docSnap.id, ...docSnap.data(), createdAt: convertTimestamp(docSnap.data().createdAt) } as Agent);
         });
-        setUserAgents(currentUserAgentsList); // Agents for direct user interaction
-        combinedAgents = [...currentUserAgentsList]; // Start with current user's agents for mentions
+        setUserAgents(currentUserAgentsList); 
+        combinedAgents = [...currentUserAgentsList]; 
         console.log(`[PostCard ${post.id}] Fetched ${currentUserAgentsList.length} agents for current user ${currentUser.uid}`);
 
-        // If the current user is NOT the network owner but viewing this post (future scenario),
-        // we might still want to suggest the network owner's agents for @mentions.
-        // For now, this also covers the case where the current user IS the network owner.
-        if (post.networkId !== currentUser.uid) { // Fetch network owner's agents if different
-          const networkOwnerAgentsQuery = query(collection(db, "agents"), where("userId", "==", post.networkId));
-          const networkOwnerAgentSnapshot = await getDocs(networkOwnerAgentsQuery);
-          networkOwnerAgentSnapshot.forEach(docSnap => {
+        // Fetch post author's agents (for @mentions, if different from current user)
+        if (post.userId !== currentUser.uid) { 
+          const postAuthorAgentsQuery = query(collection(db, "agents"), where("userId", "==", post.userId));
+          const postAuthorAgentSnapshot = await getDocs(postAuthorAgentsQuery);
+          postAuthorAgentSnapshot.forEach(docSnap => {
             const agentData = { id: docSnap.id, ...docSnap.data(), createdAt: convertTimestamp(docSnap.data().createdAt) } as Agent;
             if (!combinedAgents.find(ca => ca.id === agentData.id)) {
               combinedAgents.push(agentData);
@@ -99,17 +92,15 @@ export function PostCard({ post, currentUser }: PostCardProps) {
         }
         const uniqueAgentsByName = Array.from(new Map(combinedAgents.map(agent => [agent.name, agent])).values());
         setMentionableAgents(uniqueAgentsByName);
-        console.log(`[PostCard ${post.id}] Total ${uniqueAgentsByName.length} mentionable agents populated for network ${post.networkId}.`);
+        console.log(`[PostCard ${post.id}] Total ${uniqueAgentsByName.length} mentionable agents populated.`);
 
       } catch (error: any) {
         console.error(`[PostCard ${post.id}] Error fetching agents:`, error);
         toast({ title: "Error Fetching Agents", description: `Could not load AI agents: ${error.message || 'Unknown error'}`, variant: "destructive" });
       }
     };
-    if (canInteract) { // Only fetch agents if the user can interact (is network owner for now)
-        fetchRelevantAgents();
-    }
-  }, [currentUser, post.id, post.networkId, toast, canInteract]);
+    fetchRelevantAgents();
+  }, [currentUser, post.id, post.userId, toast]);
 
 
   const timeAgo = post.createdAt ? formatDistanceToNow(new Date(convertTimestamp(post.createdAt)), { addSuffix: true }) : 'just now';
@@ -119,10 +110,9 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().substring(0,2);
   };
 
-  // Handles reactions made by the currentUser (or their primary agent)
   const handleReaction = async (newReactionType: string) => {
     if (!currentUser || !canInteract) {
-      toast({ title: "Interaction Denied", description: "You cannot react to this post.", variant: "destructive" });
+      toast({ title: "Interaction Denied", description: "You need to be logged in to react.", variant: "destructive" });
       return;
     }
     if (userAgents.length === 0) {
@@ -130,9 +120,9 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       return;
     }
 
-    const reactingAgent = userAgents[0]; // Current user's first agent reacts
+    const reactingAgent = userAgents[0]; 
     const postRef = doc(db, "posts", post.id);
-    console.log(`[Reaction Trigger ${post.id}] Current user's agent ${reactingAgent.name} (ID: ${reactingAgent.id}) attempting to '${newReactionType}' post in network ${post.networkId}`);
+    console.log(`[Reaction Trigger ${post.id}] Current user's agent ${reactingAgent.name} (ID: ${reactingAgent.id}) attempting to '${newReactionType}' post by ${post.userDisplayName}`);
 
     try {
       const currentReactions = post.reactions || [];
@@ -165,32 +155,30 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     }
   };
 
-  // Triggers reply from one of the NETWORK OWNER's agents to a new comment
   const triggerAgentReplyToComment = async (triggeringUserCommentContent: string, triggeringUserDisplayName: string, fullCommentThread: CommentType[]) => {
-    // post.networkId is the ID of the network owner
-    if (!post.networkId) { 
-        console.warn(`[AI Reply Trigger ${post.id}] Network ID (post.networkId) is missing. Cannot trigger AI comment reply.`);
+    if (!post.userId) { 
+        console.warn(`[AI Reply Trigger ${post.id}] Post author ID (post.userId) is missing. Cannot trigger AI comment reply.`);
         return;
     }
-    console.log(`[AI Reply Trigger ${post.id}] User ${triggeringUserDisplayName} commented. Attempting to trigger reply from network owner's (${post.networkId}) agents.`);
+    console.log(`[AI Reply Trigger ${post.id}] User ${triggeringUserDisplayName} commented. Attempting to trigger reply from post author's (${post.userId}) agents.`);
 
-    let networkOwnerAgents: Agent[] = [];
+    let postAuthorAgents: Agent[] = [];
     try {
-        const agentsQuery = query(collection(db, "agents"), where("userId", "==", post.networkId)); // Agents of the network owner
+        const agentsQuery = query(collection(db, "agents"), where("userId", "==", post.userId)); // Agents of the post author
         const agentSnapshot = await getDocs(agentsQuery);
-        agentSnapshot.forEach(docSnap => networkOwnerAgents.push({ id: docSnap.id, ...docSnap.data(), createdAt: convertTimestamp(docSnap.data().createdAt) } as Agent));
+        agentSnapshot.forEach(docSnap => postAuthorAgents.push({ id: docSnap.id, ...docSnap.data(), createdAt: convertTimestamp(docSnap.data().createdAt) } as Agent));
     } catch (e: any) {
-        console.error(`[AI Reply Trigger ${post.id}] Error fetching network owner's agents:`, e);
+        console.error(`[AI Reply Trigger ${post.id}] Error fetching post author's agents:`, e);
         toast({ title: "AI Reply Error", description: `Could not fetch agents to reply: ${e.message}`, variant: "destructive" });
         return;
     }
 
-    if (networkOwnerAgents.length === 0) {
-        console.log(`[AI Reply Trigger ${post.id}] No agents found for network owner (${post.networkId}) to generate a reply.`);
+    if (postAuthorAgents.length === 0) {
+        console.log(`[AI Reply Trigger ${post.id}] No agents found for post author (${post.userId}) to generate a reply.`);
         return;
     }
-    const respondingAgent = networkOwnerAgents[Math.floor(Math.random() * networkOwnerAgents.length)];
-    console.log(`[AI Reply Trigger ${post.id}] Network agent ${respondingAgent.name} (ID: ${respondingAgent.id}) selected to respond.`);
+    const respondingAgent = postAuthorAgents[Math.floor(Math.random() * postAuthorAgents.length)];
+    console.log(`[AI Reply Trigger ${post.id}] Post author's agent ${respondingAgent.name} (ID: ${respondingAgent.id}) selected to respond.`);
 
     const existingCommentsForAIContext = fullCommentThread.map(c => `${c.authorName}: ${c.content}`);
     const aiInput: AgentDecisionInput = {
@@ -198,12 +186,12 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       agentPersona: respondingAgent.persona,
       agentArchetype: respondingAgent.archetype,
       agentPsychologicalProfile: respondingAgent.psychologicalProfile,
-      agentBackstory: respondingAgent.backstory,
-      agentLanguageStyle: respondingAgent.languageStyle,
-      agentMemorySummary: `Replying to a comment by ${triggeringUserDisplayName} on a post by ${post.userDisplayName || 'Original Poster'} in their network (${post.networkId}). The latest comment in the thread is: "${triggeringUserCommentContent}". Review thread for any @${respondingAgent.name} tags.`,
+      agentBackstory: agent.backstory,
+      agentLanguageStyle: agent.languageStyle,
+      agentMemorySummary: `Replying to a comment by ${triggeringUserDisplayName} on a post by ${post.userDisplayName || 'Original Poster'}. The latest comment in the thread is: "${triggeringUserCommentContent}". Review thread for any @${respondingAgent.name} tags.`,
       postContent: post.content,
       postImageUrl: post.imageUrl || null,
-      postAuthorName: post.userDisplayName || "Original Poster", // The owner of the network/post
+      postAuthorName: post.userDisplayName || "Original Poster",
       existingComments: existingCommentsForAIContext,
       isReplyContext: true,
     };
@@ -239,20 +227,19 @@ export function PostCard({ post, currentUser }: PostCardProps) {
     }
   };
 
-  // Handles comment submission by the currentUser
   const handleAddComment = async () => {
     if (!newComment.trim() || !currentUser || !canInteract) {
-      toast({ title: "Interaction Denied", description: "You cannot comment on this post.", variant: "destructive" });
+      toast({ title: "Interaction Denied", description: "You must be logged in to comment.", variant: "destructive" });
       return;
     }
     setIsCommenting(true);
     const submittedCommentContent = newComment; 
     const userDisplayNameForAI = currentUser.displayName || "Anonymous User";
-    console.log(`[User Comment ${post.id}] User ${currentUser.uid} attempting to add comment: "${submittedCommentContent}" to post in network ${post.networkId}`);
+    console.log(`[User Comment ${post.id}] User ${currentUser.uid} attempting to add comment: "${submittedCommentContent}" to post by ${post.userDisplayName}`);
 
     const newCommentData: CommentType = {
       postId: post.id,
-      userId: currentUser.uid, // Comment by the current authenticated user
+      userId: currentUser.uid, 
       authorName: userDisplayNameForAI,
       authorAvatarUrl: currentUser.photoURL || null,
       content: submittedCommentContent,
@@ -277,7 +264,6 @@ export function PostCard({ post, currentUser }: PostCardProps) {
       setShowMentionPopover(false);
       toast({ title: "Comment Added", description: "Your comment has been posted." });
 
-      // After user comments, network owner's agents might reply
       await triggerAgentReplyToComment(submittedCommentContent, userDisplayNameForAI, updatedComments);
 
     } catch (error: any) {
@@ -289,11 +275,11 @@ export function PostCard({ post, currentUser }: PostCardProps) {
   };
 
   const handleDeletePost = async () => {
-    if (!currentUser || currentUser.uid !== post.networkId) { // Only network owner can delete their post
-        toast({ title: "Permission Denied", description: "You can only delete posts from your own network.", variant: "destructive" });
+    if (!currentUser || currentUser.uid !== post.userId) { 
+        toast({ title: "Permission Denied", description: "You can only delete your own posts.", variant: "destructive" });
         return;
     }
-    console.log(`[Post Delete ${post.id}] User ${currentUser.uid} (network owner) attempting to delete post`);
+    console.log(`[Post Delete ${post.id}] User ${currentUser.uid} attempting to delete post`);
     try {
       await deleteDoc(doc(db, "posts", post.id));
       console.log(`[Post Delete ${post.id}] Post deleted successfully from Firestore.`);
@@ -418,9 +404,9 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           </Avatar>
           <div>
             <CardTitle className="text-base font-semibold">{post.userDisplayName || "Anonymous User"}</CardTitle>
-            <p className="text-xs text-muted-foreground">{timeAgo} (Network: {post.networkId === currentUser?.uid ? "Yours" : post.networkId})</p>
+            <p className="text-xs text-muted-foreground">{timeAgo}</p>
           </div>
-          {currentUser && currentUser.uid === post.networkId && ( // Only network owner can delete their post
+          {currentUser && currentUser.uid === post.userId && ( 
              <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="ghost" size="icon" className="ml-auto">
@@ -476,7 +462,7 @@ export function PostCard({ post, currentUser }: PostCardProps) {
           </div>
         )}
 
-        {canInteract && ( // Only show interaction buttons if user can interact with this network's posts
+        {canInteract && ( 
             <div className="flex w-full justify-around border-t pt-2">
             <Button variant="ghost" className="flex-1" onClick={() => handleReaction('like')} disabled={!currentUser || userAgents.length === 0}>
                 <ThumbsUp className="mr-2 h-4 w-4" /> Like

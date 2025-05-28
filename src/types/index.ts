@@ -14,10 +14,6 @@ export type AppUserProfile = {
   photoURL?: string | null;
   createdAt: number; // Timestamp
   friends?: string[]; // Array of friend UIDs
-
-  // Network feature fields
-  memberOfNetworks?: string[]; // IDs of networks this user has joined (networkId is typically owner's UID)
-  myNetworkMembers?: string[]; // UserIDs of members who have joined this user's network
 };
 
 export type Agent = {
@@ -35,10 +31,9 @@ export type Agent = {
 
 export type Post = {
   id: string;
-  userId: string; // The user who created the post (and owns the network it's in)
+  userId: string; // The user who created the post
   userDisplayName: string | null;
   userAvatarUrl?: string | null;
-  networkId: string; // The ID of the network this post belongs to (typically owner's UID)
   content: string;
   imageUrl?: string | null; // Can be a URL or a data URI
   createdAt: number; // Timestamp
@@ -81,15 +76,4 @@ export type FriendRequest = {
   updatedAt?: number;
 };
 
-export type NetworkJoinRequestStatus = 'pending' | 'accepted' | 'declined';
-
-export type NetworkJoinRequest = {
-  id: string; // Firestore document ID
-  senderId: string; // User requesting to join
-  senderDisplayName: string | null;
-  senderPhotoURL?: string | null;
-  networkOwnerId: string; // Owner of the network being requested
-  status: NetworkJoinRequestStatus;
-  createdAt: number; // Timestamp
-  updatedAt?: number; // Timestamp
-};
+// NetworkJoinRequest and NetworkJoinRequestStatus are removed

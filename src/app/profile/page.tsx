@@ -9,9 +9,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UserCircle, Mail, CalendarDays, Users, UserPlus, UserCheck, UserX, Loader2, Network, UserMinus, UsersRound } from "lucide-react";
+import { UserCircle, Mail, CalendarDays, Users, UserPlus, UserCheck, UserX, Loader2 } from "lucide-react";
 import { format } from 'date-fns';
-import { db } from "@/lib/firebase"; // Timestamp is exported from here
+import { db } from "@/lib/firebase";
 import { 
   doc, 
   getDoc, 
@@ -26,14 +26,13 @@ import {
   updateDoc,
   deleteDoc,
   runTransaction,
-  Timestamp, // Explicitly import Timestamp if not re-exported from lib/firebase
-  setDoc
+  Timestamp
 } from "firebase/firestore";
-import type { AppUserProfile, FriendRequest, NetworkJoinRequest } from "@/types";
+import type { AppUserProfile, FriendRequest } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
 const convertAppUserProfileTimestamp = (profileData: any): AppUserProfile => {
-    if (!profileData) return { uid: '', displayName: 'Unknown', email: null, photoURL: null, createdAt: Date.now(), friends: [], memberOfNetworks: [], myNetworkMembers: [] } as AppUserProfile; 
+    if (!profileData) return { uid: '', displayName: 'Unknown', email: null, photoURL: null, createdAt: Date.now(), friends: [] } as AppUserProfile; 
     return {
         ...profileData,
         uid: profileData.uid || '',
@@ -42,8 +41,6 @@ const convertAppUserProfileTimestamp = (profileData: any): AppUserProfile => {
         photoURL: profileData.photoURL || null,
         createdAt: profileData.createdAt instanceof Timestamp ? profileData.createdAt.toMillis() : (typeof profileData.createdAt === 'number' ? profileData.createdAt : Date.now()),
         friends: profileData.friends || [],
-        memberOfNetworks: profileData.memberOfNetworks || [],
-        myNetworkMembers: profileData.myNetworkMembers || [],
     } as AppUserProfile;
 };
 
@@ -54,14 +51,6 @@ const convertFriendRequestTimestamp = (req: any): FriendRequest => {
     return convertedReq as FriendRequest;
 }
 
-const convertNetworkJoinRequestTimestamp = (req: any): NetworkJoinRequest => {
-    const convertedReq = { ...req, createdAt: req.createdAt instanceof Timestamp ? req.createdAt.toMillis() : req.createdAt, updatedAt: req.updatedAt instanceof Timestamp ? req.updatedAt.toMillis() : req.updatedAt };
-    if (typeof convertedReq.createdAt !== 'number') convertedReq.createdAt = Date.now();
-    if (typeof convertedReq.updatedAt !== 'number') convertedReq.updatedAt = Date.now();
-    return convertedReq as NetworkJoinRequest;
-}
-
-
 export default function ProfilePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -69,9 +58,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<AppUserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
-  const [networkJoinRequests, setNetworkJoinRequests] = useState<NetworkJoinRequest[]>([]);
   const [friends, setFriends] = useState<AppUserProfile[]>([]);
-  const [myNetworkMembersList, setMyNetworkMembersList] = useState<AppUserProfile[]>([]);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -90,7 +77,6 @@ export default function ProfilePage() {
           const userProfileData = convertAppUserProfileTimestamp(profileSnap.data());
           setProfile(userProfileData);
 
-          // Fetch friends details
           if (userProfileData.friends && userProfileData.friends.length > 0) {
             try {
               const friendPromises = userProfileData.friends.map(friendId => getDoc(doc(db, "userProfiles", friendId)));
@@ -98,45 +84,27 @@ export default function ProfilePage() {
               setFriends(friendDocs.filter(docSnap => docSnap.exists()).map(docSnap => convertAppUserProfileTimestamp(docSnap.data() as AppUserProfile)));
             } catch (error) {
                 console.error("[ProfilePage] Error fetching friends details:", error);
-                setFriends([]); // Reset or handle error as appropriate
+                setFriends([]);
             }
           } else {
             setFriends([]);
           }
-
-          // Fetch network members details
-          if (userProfileData.myNetworkMembers && userProfileData.myNetworkMembers.length > 0) {
-              try {
-                const memberPromises = userProfileData.myNetworkMembers.map(memberId => getDoc(doc(db, "userProfiles", memberId)));
-                const memberDocs = await Promise.all(memberPromises);
-                setMyNetworkMembersList(memberDocs.filter(docSnap => docSnap.exists()).map(docSnap => convertAppUserProfileTimestamp(docSnap.data() as AppUserProfile)));
-              } catch (error) {
-                console.error("[ProfilePage] Error fetching network members details:", error);
-                setMyNetworkMembersList([]);
-              }
-          } else {
-              setMyNetworkMembersList([]);
-          }
-
         } else {
           console.warn("[ProfilePage] User profile not found for UID:", user.uid, "Attempting to create one.");
-          const basicProfile: AppUserProfile = {
+          const basicProfileData: Omit<AppUserProfile, 'createdAt'> & { createdAt: any } = {
             uid: user.uid,
             displayName: user.displayName || "User",
             email: user.email,
             photoURL: user.photoURL,
-            createdAt: Date.now(),
             friends: [],
-            memberOfNetworks: [],
-            myNetworkMembers: []
+            createdAt: serverTimestamp()
           };
           try {
-            await setDoc(profileRef, { ...basicProfile, createdAt: serverTimestamp() });
-            // setProfile(convertAppUserProfileTimestamp(basicProfile)); // The onSnapshot will update this
+            await setDoc(profileRef, basicProfileData);
             console.log("[ProfilePage] Created basic profile for UID:", user.uid);
           } catch (error) {
             console.error("[ProfilePage] Error creating basic profile:", error);
-            setProfile(null); // Could not create, set to null
+            setProfile(null);
           }
         }
         setLoadingProfile(false);
@@ -153,26 +121,15 @@ export default function ProfilePage() {
         console.error("[ProfilePage] Error fetching friend requests:", error);
         toast({ title: "Error", description: `Could not load friend requests: ${error.message}`, variant: "destructive" });
       });
-
-      const njrQuery = query(collection(db, "networkJoinRequests"), where("networkOwnerId", "==", user.uid), where("status", "==", "pending"));
-      const unsubscribeNetworkRequests = onSnapshot(njrQuery, (njrSnapshot) => {
-        setNetworkJoinRequests(njrSnapshot.docs.map(docSnap => convertNetworkJoinRequestTimestamp({ id: docSnap.id, ...docSnap.data() } as NetworkJoinRequest)));
-      }, (error) => {
-         console.error("[ProfilePage] Error fetching network join requests:", error);
-         toast({ title: "Error", description: `Could not load network join requests: ${error.message}`, variant: "destructive" });
-      });
       
       return () => {
         unsubscribeProfile();
         unsubscribeFriendRequests();
-        unsubscribeNetworkRequests();
       };
     } else {
       setProfile(null);
       setFriends([]);
       setFriendRequests([]);
-      setNetworkJoinRequests([]);
-      setMyNetworkMembersList([]);
       setLoadingProfile(false);
     }
   }, [user, toast, router]);
@@ -201,16 +158,12 @@ export default function ProfilePage() {
           throw new Error(`Sender profile (UID: ${request.senderId}) does not exist.`);
         }
         
-        // const currentUserData = currentUserDoc.data() as AppUserProfile; // Not strictly needed for this update logic
-        // const senderData = senderDoc.data() as AppUserProfile; // Not strictly needed for this update logic
-
         console.log(`[Friend Accept Transaction] Batch Details:
       1. Update friendRequest ${request.id} to accepted.
       2. Current User (${user.uid}) adds ${request.senderId} to their friends.
       3. Sender (${request.senderId}) adds ${user.uid} to their friends.`);
 
         transaction.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
-        // arrayUnion handles the case where the field might not exist yet, by creating it as an array with the new element.
         transaction.update(currentUserProfileRef, { friends: arrayUnion(request.senderId) });
         transaction.update(senderProfileRef, { friends: arrayUnion(user.uid) });
       });
@@ -264,95 +217,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleAcceptNetworkJoinRequest = async (request: NetworkJoinRequest) => {
-    if (!user || !profile || !request.senderId) {
-      toast({ title: "Error", description: "Cannot process request. Missing user, profile, or sender information.", variant: "destructive" });
-      return;
-    }
-    setProcessingRequestId(request.id);
-    console.log(`[Network Join Accept] Network Owner ${user.uid} (Profile: ${profile.displayName}) accepting request ${request.id} from Sender ${request.senderId} (${request.senderDisplayName})`);
-    
-    const requestRef = doc(db, "networkJoinRequests", request.id);
-    const networkOwnerProfileRef = doc(db, "userProfiles", user.uid); // Current user is the network owner
-    const senderProfileRef = doc(db, "userProfiles", request.senderId);
-
-    try {
-      await runTransaction(db, async (transaction) => {
-        const networkOwnerDoc = await transaction.get(networkOwnerProfileRef);
-        const senderDoc = await transaction.get(senderProfileRef);
-
-        if (!networkOwnerDoc.exists()) {
-          throw new Error(`Network owner profile (UID: ${user.uid}) does not exist.`);
-        }
-        if (!senderDoc.exists()) {
-          throw new Error(`Sender profile (UID: ${request.senderId}) does not exist.`);
-        }
-        
-        const networkOwnerData = networkOwnerDoc.data() as AppUserProfile;
-        const senderData = senderDoc.data() as AppUserProfile;
-
-        console.log(`[Network Join Accept Transaction] Details:
-          1. Update networkJoinRequest ${request.id} to accepted.
-          2. Network Owner (${user.uid}) current myNetworkMembers: ${JSON.stringify(networkOwnerData.myNetworkMembers || [])}, adding ${request.senderId}.
-          3. Sender (${request.senderId}) current memberOfNetworks: ${JSON.stringify(senderData.memberOfNetworks || [])}, adding Network Owner (${user.uid}).`);
-        
-        transaction.update(requestRef, { status: "accepted", updatedAt: serverTimestamp() });
-        // arrayUnion handles creating the field if it doesn't exist
-        transaction.update(networkOwnerProfileRef, { myNetworkMembers: arrayUnion(request.senderId) });
-        transaction.update(senderProfileRef, { memberOfNetworks: arrayUnion(user.uid) });
-      });
-      toast({ title: "Network Join Request Accepted", description: `${request.senderDisplayName || 'User'} has joined your network.` });
-    } catch (error: any) {
-      console.error(`[Network Join Accept] Error accepting network join request ${request.id} from ${request.senderId}:`, error);
-      toast({ title: "Error Accepting Join Request", description: error.message || 'Could not accept join request.', variant: "destructive" });
-    } finally {
-      setProcessingRequestId(null);
-    }
-  };
-
-  const handleDeclineNetworkJoinRequest = async (request: NetworkJoinRequest) => {
-    if (!user || !request.senderId) return;
-    setProcessingRequestId(request.id);
-    const requestRef = doc(db, "networkJoinRequests", request.id);
-    try {
-      await updateDoc(requestRef, { status: "declined", updatedAt: serverTimestamp() });
-      toast({ title: "Network Join Request Declined", description: `Request from ${request.senderDisplayName || 'User'} declined.` });
-    } catch (error: any) {
-      console.error(`[Network Join Decline] Error declining request ${request.id}:`, error);
-      toast({ title: "Error Declining Join Request", description: error.message || 'Could not decline request.', variant: "destructive" });
-    } finally {
-      setProcessingRequestId(null);
-    }
-  };
-
-  const handleRemoveNetworkMember = async (memberId: string) => {
-    if (!user || !memberId || !profile) return;
-    setProcessingRequestId(memberId);
-    
-    const networkOwnerProfileRef = doc(db, "userProfiles", user.uid); // Current user is the network owner
-    const memberProfileRef = doc(db, "userProfiles", memberId);
-    const removedMember = myNetworkMembersList.find(m => m.uid === memberId);
-
-    console.log(`[Remove Member] Network Owner ${user.uid} (${profile.displayName}) removing member ${memberId} (${removedMember?.displayName})`);
-    
-    try {
-      const batch = writeBatch(db);
-      console.log(`[Remove Member] Batch Details:
-      1. Network Owner (${user.uid}) removes ${memberId} from their myNetworkMembers.
-      2. Member (${memberId}) removes Network Owner (${user.uid}) from their memberOfNetworks.`);
-
-      batch.update(networkOwnerProfileRef, { myNetworkMembers: arrayRemove(memberId) });
-      batch.update(memberProfileRef, { memberOfNetworks: arrayRemove(user.uid) });
-      await batch.commit();
-      toast({ title: "Member Removed", description: `${removedMember?.displayName || 'User'} has been removed from your network.` });
-    } catch (error: any) {
-      console.error(`[Remove Member] Error removing member ${memberId}:`, error);
-      toast({ title: "Error Removing Member", description: error.message || 'Could not remove member.', variant: "destructive" });
-    } finally {
-      setProcessingRequestId(null);
-    }
-  };
-
   const getInitials = (name?: string | null) => {
     if (!name) return "PN";
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().substring(0, 2);
@@ -371,9 +235,7 @@ export default function ProfilePage() {
         </div>
         <Card><CardHeader className="items-center text-center"><Skeleton className="h-24 w-24 rounded-full mb-2" /><Skeleton className="h-6 w-40 mb-1" /><Skeleton className="h-4 w-48" /></CardHeader><CardContent className="space-y-4"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></CardContent></Card>
         <Card><CardHeader><CardTitle>Friend Requests</CardTitle></CardHeader><CardContent><Skeleton className="h-16 w-full" /></CardContent></Card>
-        <Card><CardHeader><CardTitle>Network Join Requests</CardTitle></CardHeader><CardContent><Skeleton className="h-16 w-full" /></CardContent></Card>
         <Card><CardHeader><CardTitle>Friends</CardTitle></CardHeader><CardContent><Skeleton className="h-16 w-full" /></CardContent></Card>
-        <Card><CardHeader><CardTitle>My Network Members</CardTitle></CardHeader><CardContent><Skeleton className="h-16 w-full" /></CardContent></Card>
       </div>
     );
   }
@@ -385,7 +247,6 @@ export default function ProfilePage() {
   if (!profile && !loadingProfile && user) {
     return <div className="text-center">Loading profile data or profile not found...</div>;
   }
-
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -426,25 +287,6 @@ export default function ProfilePage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><Network className="h-6 w-6"/>Network Join Requests ({networkJoinRequests.length})</CardTitle></CardHeader>
-        <CardContent>
-          {loadingProfile && networkJoinRequests.length === 0 && <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />}
-          {!loadingProfile && networkJoinRequests.length === 0 && (<p className="text-muted-foreground text-sm">No pending requests to join your network.</p>)}
-          <div className="space-y-3">
-            {networkJoinRequests.map(req => (
-              <div key={req.id} className="flex items-center justify-between p-3 border rounded-md bg-secondary/30">
-                <div className="flex items-center space-x-3"><Avatar className="h-10 w-10"><AvatarImage src={req.senderPhotoURL || undefined} /><AvatarFallback>{getInitials(req.senderDisplayName)}</AvatarFallback></Avatar><div><p className="font-medium">{req.senderDisplayName || "User"}</p><p className="text-xs text-muted-foreground">Wants to join your network</p></div></div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => handleDeclineNetworkJoinRequest(req)} disabled={processingRequestId === req.id}>{processingRequestId === req.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <UserX className="h-4 w-4"/>}<span className="ml-1.5 hidden sm:inline">Decline</span></Button>
-                  <Button size="sm" onClick={() => handleAcceptNetworkJoinRequest(req)} disabled={processingRequestId === req.id}>{processingRequestId === req.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <UserCheck className="h-4 w-4"/>}<span className="ml-1.5 hidden sm:inline">Accept</span></Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-6 w-6"/>Your Friends ({friends.length})</CardTitle></CardHeader>
         <CardContent>
           {loadingProfile && friends.length === 0 && <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />}
@@ -459,25 +301,6 @@ export default function ProfilePage() {
           </div>
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><UsersRound className="h-6 w-6"/>My Network Members ({myNetworkMembersList.length})</CardTitle></CardHeader>
-        <CardContent>
-          {loadingProfile && myNetworkMembersList.length === 0 && <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />}
-          {!loadingProfile && myNetworkMembersList.length === 0 && (<p className="text-muted-foreground text-sm">No one has joined your network yet.</p>)}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {myNetworkMembersList.map(member => (
-              <div key={member.uid} className="flex items-center justify-between p-3 border rounded-md">
-                <div className="flex items-center space-x-3"><Avatar className="h-10 w-10"><AvatarImage src={member.photoURL || undefined} /><AvatarFallback>{getInitials(member.displayName)}</AvatarFallback></Avatar><div><p className="font-medium">{member.displayName || "User"}</p><p className="text-xs text-muted-foreground">{member.email || "No email"}</p></div></div>
-                <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => handleRemoveNetworkMember(member.uid)} disabled={processingRequestId === member.uid} title="Remove Member">{processingRequestId === member.uid ? <Loader2 className="h-4 w-4 animate-spin"/> : <UserMinus className="h-4 w-4"/>}</Button>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
-
-
-    

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { CreatePostForm } from "@/components/feed/CreatePostForm";
 import { PostCard } from "@/components/feed/PostCard";
-import type { Post, Agent, Reaction as ReactionType, Comment as CommentType, AppUserProfile } from "@/types";
+import type { Post, Agent, Reaction as ReactionType, Comment as CommentType } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { db } from "@/lib/firebase";
 import {
@@ -16,17 +16,15 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
-  Timestamp, // Imported Timestamp
+  Timestamp, 
   getDocs,
   where,
   doc,
   updateDoc,
-  arrayUnion,
-  getDoc,
-  or
+  arrayUnion
 } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { BotMessageSquare, Rss, Loader2 } from "lucide-react";
+import { BotMessageSquare, Rss } from "lucide-react";
 import { agentDecision, type AgentDecisionInput, type AgentDecisionOutput } from "@/ai/flows/agent-decision-flow";
 
 const convertTimestamp = (timestampField: any): number | any => {
@@ -36,21 +34,11 @@ const convertTimestamp = (timestampField: any): number | any => {
   return timestampField;
 };
 
-const convertAppUserProfileTimestamp = (profile: any): AppUserProfile => {
-    return {
-        ...profile,
-        createdAt: profile.createdAt instanceof Timestamp ? profile.createdAt.toMillis() : profile.createdAt,
-        memberOfNetworks: profile.memberOfNetworks || [],
-        myNetworkMembers: profile.myNetworkMembers || [],
-    } as AppUserProfile;
-};
-
 export default function FeedPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
-  const [currentUserProfile, setCurrentUserProfile] = useState<AppUserProfile | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -60,67 +48,14 @@ export default function FeedPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (user) {
-      const fetchUserProfile = async () => {
-        const profileRef = doc(db, "userProfiles", user.uid);
-        const profileSnap = await getDoc(profileRef);
-        if (profileSnap.exists()) {
-          setCurrentUserProfile(convertAppUserProfileTimestamp(profileSnap.data()));
-        } else {
-          console.warn(`User profile not found for UID: ${user.uid}. Feed may be limited to own posts.`);
-          // Create a minimal profile if it doesn't exist for some reason
-           setCurrentUserProfile({
-            uid: user.uid,
-            displayName: user.displayName,
-            email: user.email,
-            photoURL: user.photoURL,
-            createdAt: Date.now(),
-            memberOfNetworks: [],
-            myNetworkMembers: [],
-          });
-        }
-      };
-      fetchUserProfile();
-    }
-  }, [user]);
-
-
-  useEffect(() => {
-    if (user && currentUserProfile) { // Only subscribe to posts if user and their profile are loaded
+    if (user) { 
       setLoadingPosts(true);
-
-      const networkIdsToQuery: string[] = [user.uid, ...(currentUserProfile.memberOfNetworks || [])];
-      
-      // Firestore "in" queries are limited to 30 elements.
-      // If networkIdsToQuery is empty (e.g. profile still loading), or has more than 30, handle appropriately.
-      if (networkIdsToQuery.length === 0 || networkIdsToQuery.length > 30) {
-          console.warn(`[FeedPage] Cannot query posts: networkIdsToQuery is empty or exceeds 30 items (count: ${networkIdsToQuery.length}). Defaulting to own network.`);
-          // Fallback to just user's own network if list is problematic
-          if (networkIdsToQuery.length === 0 && user.uid) {
-            networkIdsToQuery.push(user.uid);
-          } else if (networkIdsToQuery.length > 30) {
-             // For now, just take the first 30. A production app would need pagination or a different strategy.
-             networkIdsToQuery.splice(0, networkIdsToQuery.length - 30); // Keep the last 30, or first 30
-             toast({title: "Feed Limited", description: "Displaying posts from up to 30 joined networks.", variant: "default"});
-          }
-      }
-      
-      let q;
-      if (networkIdsToQuery.length > 0) {
-        q = query(
-          collection(db, "posts"),
-          where("networkId", "in", networkIdsToQuery),
-          orderBy("createdAt", "desc")
-        );
-        console.log(`[FeedPage] Subscribing to posts for networkIds: ${networkIdsToQuery.join(', ')}`);
-      } else {
-        // Should not happen if profile is loaded correctly, but as a fallback:
-        console.log(`[FeedPage] No valid network IDs to query for posts. User: ${user.uid}`);
-        setPosts([]);
-        setLoadingPosts(false);
-        return;
-      }
-
+      // Fetch all posts from all users, ordered by creation date
+      const q = query(
+        collection(db, "posts"),
+        orderBy("createdAt", "desc")
+      );
+      console.log(`[FeedPage] Subscribing to all posts.`);
 
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const postsData: Post[] = [];
@@ -131,7 +66,6 @@ export default function FeedPage() {
             userId: data.userId,
             userDisplayName: data.userDisplayName,
             userAvatarUrl: data.userAvatarUrl,
-            networkId: data.networkId,
             content: data.content,
             imageUrl: data.imageUrl,
             createdAt: convertTimestamp(data.createdAt),
@@ -141,26 +75,22 @@ export default function FeedPage() {
         });
         setPosts(postsData);
         setLoadingPosts(false);
-        console.log(`[FeedPage] Loaded ${postsData.length} posts for queried networks.`);
+        console.log(`[FeedPage] Loaded ${postsData.length} total posts.`);
       }, (error) => {
         console.error(`[FeedPage] Error fetching posts with onSnapshot:`, error);
         toast({ title: "Error fetching posts", description: `Snapshot error: ${error.message}`, variant: "destructive" });
         setLoadingPosts(false);
       });
       return () => unsubscribe();
-    } else if (!user) {
+    } else if (!user && !authLoading) { // Ensure posts are cleared if user logs out
       setPosts([]);
       setLoadingPosts(false);
     }
-  }, [user, currentUserProfile, toast]);
+  }, [user, authLoading, toast]);
 
 
-  const triggerAgentEngagementWithNewPost = async (newPostId: string, postContent: string, postImageUrl: string | undefined | null, postUserId: string, postAuthorDisplayName: string, networkId: string) => {
-    if (postUserId !== networkId) {
-      console.warn(`[AI Engagement Trigger ${newPostId}] postUserId (${postUserId}) and networkId (${networkId}) mismatch. Engagement only for network owner's agents.`);
-      return;
-    }
-    console.log(`[AI Engagement Trigger ${newPostId}] For new post in network ${networkId}, User ID (owner): ${postUserId}`);
+  const triggerAgentEngagementWithNewPost = async (newPostId: string, postContent: string, postImageUrl: string | undefined | null, postUserId: string, postAuthorDisplayName: string) => {
+    console.log(`[AI Engagement Trigger ${newPostId}] For new post by ${postAuthorDisplayName} (ID: ${postUserId})`);
     try {
       const agentsQuery = query(collection(db, "agents"), where("userId", "==", postUserId));
       const agentSnapshot = await getDocs(agentsQuery);
@@ -168,10 +98,10 @@ export default function FeedPage() {
       agentSnapshot.forEach(docSnap => agents.push({ id: docSnap.id, ...docSnap.data(), createdAt: convertTimestamp(docSnap.data().createdAt) } as Agent));
 
       if (agents.length === 0) {
-        console.log(`[AI Engagement Trigger ${newPostId}] No agents found for network owner ${postUserId}.`);
+        console.log(`[AI Engagement Trigger ${newPostId}] No agents found for post author ${postUserId}.`);
         return;
       }
-      console.log(`[AI Engagement Trigger ${newPostId}] Found ${agents.length} agent(s) for network owner ${postUserId}.`);
+      console.log(`[AI Engagement Trigger ${newPostId}] Found ${agents.length} agent(s) for post author ${postUserId}.`);
       const postRef = doc(db, "posts", newPostId);
 
       for (const agent of agents) {
@@ -179,7 +109,7 @@ export default function FeedPage() {
         const decisionInput: AgentDecisionInput = {
           agentName: agent.name, agentPersona: agent.persona, agentArchetype: agent.archetype,
           agentPsychologicalProfile: agent.psychologicalProfile, agentBackstory: agent.backstory, agentLanguageStyle: agent.languageStyle,
-          agentMemorySummary: `Considering a new post by ${postAuthorDisplayName} in their network.`,
+          agentMemorySummary: `Considering a new post by ${postAuthorDisplayName}.`,
           postContent: postContent, postImageUrl: postImageUrl, postAuthorName: postAuthorDisplayName,
           existingComments: [], isReplyContext: false,
         };
@@ -227,13 +157,12 @@ export default function FeedPage() {
       toast({ title: "Authentication Error", description: "You must be logged in to post.", variant: "destructive" });
       return;
     }
-    console.log(`[FeedPage] Attempting to create post in network ${user.uid} by user: ${user.uid}`);
+    console.log(`[FeedPage] Attempting to create post by user: ${user.uid}`);
     try {
       const newPostData = {
-        userId: user.uid, // This is also the network owner
+        userId: user.uid, 
         userDisplayName: user.displayName || "Anonymous User",
         userAvatarUrl: user.photoURL || null,
-        networkId: user.uid, // Post belongs to the creator's network
         content,
         imageUrl: imageUrl || null,
         createdAt: serverTimestamp(),
@@ -243,10 +172,9 @@ export default function FeedPage() {
       console.log("[FeedPage] New post data (before Firestore):", JSON.stringify(newPostData, null, 2));
       const docRef = await addDoc(collection(db, "posts"), newPostData);
       console.log("[FeedPage] Post created successfully in Firestore with ID:", docRef.id);
-      toast({ title: "Post Created!", description: "Your post is now live in your network." });
+      toast({ title: "Post Created!", description: "Your post is now live." });
       
-      // Trigger engagement from the network owner's agents
-      await triggerAgentEngagementWithNewPost(docRef.id, content, imageUrl, user.uid, user.displayName || "Anonymous User", user.uid);
+      await triggerAgentEngagementWithNewPost(docRef.id, content, imageUrl, user.uid, user.displayName || "Anonymous User");
 
     } catch (error: any) {
       console.error("[FeedPage] Error creating post in Firestore:", error);
@@ -254,12 +182,12 @@ export default function FeedPage() {
     }
   };
 
-  if (authLoading || (!user && !authLoading) || (user && !currentUserProfile && loadingPosts)) { // Show loader if auth is loading OR user profile is still loading for feed query
+  if (authLoading || (!user && !authLoading)) { 
     return (
       <div className="space-y-6">
          <div className="flex items-center gap-2 mb-4">
           <Rss className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold tracking-tight">My Network Feed</h1>
+          <h1 className="text-3xl font-bold tracking-tight">PersonaNet Feed</h1>
         </div>
         <Skeleton className="h-32 w-full rounded-lg" />
         <Skeleton className="h-48 w-full rounded-lg" />
@@ -272,10 +200,10 @@ export default function FeedPage() {
     <div className="max-w-2xl mx-auto space-y-8">
       <header className="flex items-center gap-2 mb-4">
         <Rss className="h-8 w-8 text-primary" />
-        <h1 className="text-3xl font-bold tracking-tight">My Network Feed</h1>
+        <h1 className="text-3xl font-bold tracking-tight">PersonaNet Feed</h1>
       </header>
       <p className="text-sm text-muted-foreground -mt-6">
-        Showing posts from your network and networks you've joined.
+        See what's happening across the platform.
       </p>
 
       <CreatePostForm onPostCreated={handlePostCreated} />
@@ -290,8 +218,8 @@ export default function FeedPage() {
       {!loadingPosts && posts.length === 0 && (
         <div className="text-center py-10">
           <BotMessageSquare className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <p className="text-muted-foreground text-lg">Your feed is empty.</p>
-          <p className="text-sm text-muted-foreground">Create a post in your network, or join other networks to see their content!</p>
+          <p className="text-muted-foreground text-lg">The feed is empty.</p>
+          <p className="text-sm text-muted-foreground">Be the first to post something!</p>
         </div>
       )}
 

@@ -77,17 +77,17 @@ export default function AuthForm({ mode }: AuthFormProps) {
           displayName: signupValues.displayName,
         });
 
-        const userProfileData: Omit<AppUserProfile, 'createdAt'> = { // Omit createdAt as it's handled by serverTimestamp
+        // Explicitly type userProfileData before setting createdAt
+        const userProfileData: Omit<AppUserProfile, 'createdAt'> & { createdAt: any } = { 
           uid: userCredential.user.uid,
           displayName: signupValues.displayName,
           email: userCredential.user.email,
           photoURL: userCredential.user.photoURL,
           friends: [],
-          memberOfNetworks: [], // Initialize as empty array
-          myNetworkMembers: [], // Initialize as empty array
+          createdAt: serverTimestamp(), // Use serverTimestamp directly here
         };
         const userProfileRef = doc(db, "userProfiles", userCredential.user.uid);
-        await setDoc(userProfileRef, { ...userProfileData, createdAt: serverTimestamp() }); 
+        await setDoc(userProfileRef, userProfileData); 
         
         console.log("User profile created in Firestore for UID:", userCredential.user.uid);
         toast({ title: "Account created successfully!", description: "You are now logged in and your profile is set up." });
