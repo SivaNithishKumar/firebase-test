@@ -34,7 +34,9 @@ const convertTimestamp = (timestampField: any): number | any => {
   return timestampField;
 };
 
-const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
+// Moved to a more central place or keep here if only used here.
+// For onboarding, we'll re-import this list.
+export const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
   {
     name: "Nova \"Trendsetter\" Li",
     persona: "A virtual fashion icon, always on the lookout for the next big trend. Shares stylish content and positive vibes.",
@@ -131,7 +133,7 @@ const defaultAgents: Omit<Agent, "id" | "userId" | "createdAt">[] = [
 export default function AgentsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<AgentType[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [isAddingDefaults, setIsAddingDefaults] = useState(false);
   const { toast } = useToast();
@@ -155,14 +157,14 @@ export default function AgentsPage() {
         orderBy("createdAt", "desc")
       );
       const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const agentsData: Agent[] = [];
+        const agentsData: AgentType[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           agentsData.push({
             id: doc.id,
             ...data,
             createdAt: convertTimestamp(data.createdAt),
-          } as Agent);
+          } as AgentType);
         });
         setAgents(agentsData);
         setLoadingAgents(false);
@@ -211,8 +213,6 @@ export default function AgentsPage() {
             agentsAddedCount++;
           }
         } else if (selectedDefaultAgents[agentName] && userAgentNames.includes(agentName)) {
-            // This case should ideally not happen if checkboxes for existing agents are disabled.
-            // However, it's a good fallback.
             agentsSkippedCount++;
         }
       }
@@ -222,10 +222,8 @@ export default function AgentsPage() {
       } else if (agentsAddedCount > 0) {
         toast({ title: "Default Agents Added", description: `${agentsAddedCount} new default agent(s) are now active.` });
       } else if (agentsSkippedCount > 0 && agentsAddedCount === 0) {
-         // This handles the case where the user "selected" (interacted with) agents that were already present and disabled
         toast({ title: "No New Agents Added", description: `All selected default agents already exist for your account or no new ones were chosen.` });
       } else if (Object.values(selectedDefaultAgents).every(v => !v) && agentsAddedCount === 0) {
-        // User opened dialog, selected nothing (or deselected everything)
         toast({ title: "No Default Agents Selected", description: "No default agents were selected to be added.", variant: "default" });
       }
 
@@ -252,7 +250,6 @@ export default function AgentsPage() {
     );
   }
   
-  // Determine if any *newly selectable* agents are chosen
   const anyNewAgentsSelected = defaultAgents.some(da => 
     !userAgentNames.includes(da.name) && selectedDefaultAgents[da.name]
   );
@@ -280,36 +277,38 @@ export default function AgentsPage() {
                   Select the predefined agents you'd like to add to your account. Agents you already have are checked and disabled.
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
-                {defaultAgents.map((agent) => {
-                  const alreadyExists = userAgentNames.includes(agent.name);
-                  return (
-                    <div key={agent.name} className={`flex items-start space-x-3 p-3 border rounded-md ${alreadyExists ? 'bg-muted/50 opacity-70' : 'hover:bg-accent/50'}`}>
-                      <Checkbox
-                        id={`select-agent-${agent.name.replace(/\s+/g, '-')}`}
-                        checked={alreadyExists || (selectedDefaultAgents[agent.name] || false)}
-                        onCheckedChange={(checked) => {
-                           if (!alreadyExists) { // Only allow changing selection for agents not already owned
-                             handleSelectDefaultAgent(agent.name, !!checked);
-                           }
-                        }}
-                        disabled={alreadyExists || isAddingDefaults}
-                        className="mt-1"
-                      />
-                      <div className="grid gap-1.5 leading-none">
-                        <Label
-                          htmlFor={`select-agent-${agent.name.replace(/\s+/g, '-')}`}
-                          className={`text-base font-medium ${alreadyExists ? '' : 'cursor-pointer'}`}
-                        >
-                          {agent.name} ({agent.archetype}) {alreadyExists && <span className="text-xs text-primary">(Already Added)</span>}
-                        </Label>
-                        <p className="text-sm text-muted-foreground">{agent.persona}</p>
-                        <p className="text-xs text-muted-foreground italic mt-1">Style: {agent.languageStyle}</p>
+              <ScrollArea className="max-h-[60vh] pr-2">
+                <div className="grid gap-4 py-4">
+                  {defaultAgents.map((agent) => {
+                    const alreadyExists = userAgentNames.includes(agent.name);
+                    return (
+                      <div key={agent.name} className={`flex items-start space-x-3 p-3 border rounded-md ${alreadyExists ? 'bg-muted/50 opacity-70' : 'hover:bg-accent/50'}`}>
+                        <Checkbox
+                          id={`select-agent-${agent.name.replace(/\s+/g, '-')}`}
+                          checked={alreadyExists || (selectedDefaultAgents[agent.name] || false)}
+                          onCheckedChange={(checked) => {
+                            if (!alreadyExists) { 
+                                handleSelectDefaultAgent(agent.name, !!checked);
+                            }
+                          }}
+                          disabled={alreadyExists || isAddingDefaults}
+                          className="mt-1"
+                        />
+                        <div className="grid gap-1.5 leading-none">
+                          <Label
+                            htmlFor={`select-agent-${agent.name.replace(/\s+/g, '-')}`}
+                            className={`text-base font-medium ${alreadyExists ? '' : 'cursor-pointer'}`}
+                          >
+                            {agent.name} {agent.archetype ? `(${agent.archetype})` : ''} {alreadyExists && <span className="text-xs text-primary">(Already Added)</span>}
+                          </Label>
+                          <p className="text-sm text-muted-foreground">{agent.persona}</p>
+                          <p className="text-xs text-muted-foreground italic mt-1">Style: {agent.languageStyle}</p>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
               <DialogFooter>
                 <DialogClose asChild>
                   <Button type="button" variant="outline">Cancel</Button>
@@ -366,36 +365,38 @@ export default function AgentsPage() {
                      Select the predefined agents you'd like to add to your account. Agents you already have are checked and disabled.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4 py-4 max-h-[60vh] overflow-y-auto">
-                  {defaultAgents.map((agent) => {
-                    const alreadyExists = userAgentNames.includes(agent.name);
-                    return (
-                        <div key={`empty-${agent.name}`} className={`flex items-start space-x-3 p-3 border rounded-md ${alreadyExists ? 'bg-muted/50 opacity-70' : 'hover:bg-accent/50'}`}>
-                        <Checkbox
-                            id={`empty-select-agent-${agent.name.replace(/\s+/g, '-')}`}
-                            checked={alreadyExists || (selectedDefaultAgents[agent.name] || false)}
-                            onCheckedChange={(checked) => {
-                               if (!alreadyExists) {
-                                 handleSelectDefaultAgent(agent.name, !!checked);
-                               }
-                            }}
-                            disabled={alreadyExists || isAddingDefaults}
-                            className="mt-1"
-                        />
-                        <div className="grid gap-1.5 leading-none">
-                            <Label
-                            htmlFor={`empty-select-agent-${agent.name.replace(/\s+/g, '-')}`}
-                            className={`text-base font-medium ${alreadyExists ? '' : 'cursor-pointer'}`}
-                            >
-                            {agent.name} ({agent.archetype}) {alreadyExists && <span className="text-xs text-primary">(Already Added)</span>}
-                            </Label>
-                            <p className="text-sm text-muted-foreground">{agent.persona}</p>
-                            <p className="text-xs text-muted-foreground italic mt-1">Style: {agent.languageStyle}</p>
-                        </div>
-                        </div>
-                    );
-                   })}
-                </div>
+                 <ScrollArea className="max-h-[60vh] pr-2">
+                    <div className="grid gap-4 py-4">
+                    {defaultAgents.map((agent) => {
+                        const alreadyExists = userAgentNames.includes(agent.name);
+                        return (
+                            <div key={`empty-${agent.name}`} className={`flex items-start space-x-3 p-3 border rounded-md ${alreadyExists ? 'bg-muted/50 opacity-70' : 'hover:bg-accent/50'}`}>
+                            <Checkbox
+                                id={`empty-select-agent-${agent.name.replace(/\s+/g, '-')}`}
+                                checked={alreadyExists || (selectedDefaultAgents[agent.name] || false)}
+                                onCheckedChange={(checked) => {
+                                if (!alreadyExists) {
+                                    handleSelectDefaultAgent(agent.name, !!checked);
+                                }
+                                }}
+                                disabled={alreadyExists || isAddingDefaults}
+                                className="mt-1"
+                            />
+                            <div className="grid gap-1.5 leading-none">
+                                <Label
+                                htmlFor={`empty-select-agent-${agent.name.replace(/\s+/g, '-')}`}
+                                className={`text-base font-medium ${alreadyExists ? '' : 'cursor-pointer'}`}
+                                >
+                                {agent.name} {agent.archetype ? `(${agent.archetype})` : ''} {alreadyExists && <span className="text-xs text-primary">(Already Added)</span>}
+                                </Label>
+                                <p className="text-sm text-muted-foreground">{agent.persona}</p>
+                                <p className="text-xs text-muted-foreground italic mt-1">Style: {agent.languageStyle}</p>
+                            </div>
+                            </div>
+                        );
+                    })}
+                    </div>
+                 </ScrollArea>
                 <DialogFooter>
                   <DialogClose asChild>
                     <Button type="button" variant="outline">Cancel</Button>
@@ -455,7 +456,3 @@ function AgentCardSkeleton() {
     </div>
   );
 }
-
-    
-
-    

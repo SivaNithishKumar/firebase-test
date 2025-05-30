@@ -11,9 +11,10 @@ export type AppUserProfile = {
   uid: string;
   displayName: string | null;
   email: string | null; // Be mindful of privacy if displaying this
-  photoURL?: string | null;
+  photoURL?: string | null; // Will be null for email/password users unless explicitly set
   createdAt: number; // Timestamp
   friends?: string[]; // Array of friend UIDs
+  hasCompletedOnboarding: boolean; // New field
 };
 
 export type Agent = {
@@ -75,5 +76,3 @@ export type FriendRequest = {
   createdAt: number;
   updatedAt?: number;
 };
-
-// NetworkJoinRequest and NetworkJoinRequestStatus are removed
