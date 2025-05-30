@@ -2,6 +2,7 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore, Timestamp } from "firebase/firestore";
+// Note: Firebase Functions SDK (getFunctions) is not used in this client-centric model.
 
 // Firebase configuration values will be read from environment variables
 const firebaseConfig = {
@@ -17,12 +18,12 @@ const firebaseConfig = {
 // Basic check if essential config values are present.
 // This is less strict than comparing against specific placeholder strings.
 if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
-  console.error(
+  console.warn( // Changed from error to warn to prevent app crash, but highlight issue.
     "Firebase Startup Warning: Essential Firebase configuration values (apiKey, authDomain, projectId) " +
-    "appear to be missing or empty in your .env file. " +
+    "appear to be missing or empty in your .env file or environment. " +
     "Please ensure your .env file is correctly populated with your Firebase project's credentials and " +
-    "that your Next.js development server has been restarted. The application will attempt to initialize, " +
-    "but Firebase services may fail if the configuration is incorrect."
+    "that your Next.js development server has been restarted if .env was recently changed. " +
+    "The application will attempt to initialize, but Firebase services may fail if the configuration is incorrect."
   );
 }
 
