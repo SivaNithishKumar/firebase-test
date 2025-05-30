@@ -3,9 +3,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { GoogleAuthProvider, signInWithPopup, type User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -48,22 +48,23 @@ export default function AuthForm() {
       const userProfileSnap = await getDoc(userProfileRef);
 
       if (!userProfileSnap.exists()) {
-        const userProfileData: Omit<AppUserProfile, "createdAt" | "memberOfNetworks" | "myNetworkMembers"> & {
+        // Type for new profile data, ensuring all required fields are present
+        const newUserProfileData: Omit<AppUserProfile, "createdAt" | "memberOfNetworks" | "myNetworkMembers"> & {
           createdAt: any; // For serverTimestamp
           friends: string[];
-          memberOfNetworks: string[];
-          myNetworkMembers: string[];
+          memberOfNetworks: string[]; // Initialize as empty array
+          myNetworkMembers: string[]; // Initialize as empty array
         } = {
           uid: user.uid,
           displayName: user.displayName,
           email: user.email,
           photoURL: user.photoURL,
-          createdAt: serverTimestamp(),
+          createdAt: serverTimestamp(), // Firestore server-side timestamp
           friends: [],
-          memberOfNetworks: [],
+          memberOfNetworks: [], 
           myNetworkMembers: [],
         };
-        await setDoc(userProfileRef, userProfileData);
+        await setDoc(userProfileRef, newUserProfileData);
         console.log("New user profile created in Firestore for UID:", user.uid);
         toast({
           title: "Account set up successfully!",
@@ -80,31 +81,43 @@ export default function AuthForm() {
       router.push("/feed");
 
     } catch (error: any) {
-      console.error("Google Sign-In error:", error, "Code:", error.code);
+      console.error("Google Sign-In error:", error, "Code:", error.code, "Message:", error.message);
       
       if (error.code === 'auth/popup-closed-by-user') {
         toast({
-          title: "Sign-in Window Closed",
-          description: "The Google Sign-In window was closed before completion. Please try again.",
+          title: "Sign-in Popup Closed",
+          description: "The Google Sign-In window was closed. If you didn't close it, please check your browser's popup blocker and third-party cookie settings. Then, try again.",
           variant: "default",
+          duration: 7000,
         });
       } else if (error.code === 'auth/cancelled-popup-request') {
         toast({
-          title: "Sign-in Process Interrupted",
-          description: "Multiple sign-in windows may have been opened. Please try again.",
+          title: "Sign-in Interrupted",
+          description: "It seems multiple sign-in windows were opened or the process was interrupted. Please try again.",
           variant: "default",
+          duration: 7000,
         });
       } else if (error.code === 'auth/popup-blocked') {
         toast({
           title: "Popup Blocked by Browser",
-          description: "Your browser blocked the Google Sign-In popup. Please allow popups for this site and try again.",
+          description: "Your browser blocked the Google Sign-In popup. Please allow popups for this site and try again. Also, check if third-party cookies are enabled.",
           variant: "destructive",
+          duration: 10000,
         });
-      } else {
+      } else if (error.code === 'auth/unauthorized-domain') {
+        toast({
+          title: "Domain Not Authorized",
+          description: "This application's domain is not authorized for Google Sign-In. Please contact support or ensure the domain is added to Firebase authorized domains.",
+          variant: "destructive",
+          duration: 10000,
+        });
+      }
+       else {
         toast({
           title: "Error during Google Sign-In",
-          description: error.message || "An unexpected error occurred. Please check your internet connection and browser settings (e.g., popup blockers).",
+          description: `${error.message || "An unexpected error occurred."} Please check your internet connection, browser settings (e.g., popup blockers, third-party cookies), and try again.`,
           variant: "destructive",
+          duration: 10000,
         });
       }
     } finally {
