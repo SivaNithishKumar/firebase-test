@@ -41,6 +41,11 @@ export default function AuthForm() {
     setIsLoading(true);
     const provider = new GoogleAuthProvider();
     try {
+      // Log the current origin to help debug domain authorization issues
+      if (typeof window !== "undefined") {
+        console.log("Attempting Google Sign-In from origin:", window.location.origin);
+      }
+
       const userCredential = await signInWithPopup(auth, provider);
       const user = userCredential.user;
 
@@ -48,20 +53,19 @@ export default function AuthForm() {
       const userProfileSnap = await getDoc(userProfileRef);
 
       if (!userProfileSnap.exists()) {
-        // Type for new profile data, ensuring all required fields are present
-        const newUserProfileData: Omit<AppUserProfile, "createdAt" | "memberOfNetworks" | "myNetworkMembers"> & {
-          createdAt: any; // For serverTimestamp
+        const newUserProfileData: Omit<AppUserProfile, "createdAt"> & {
+          createdAt: any; 
           friends: string[];
-          memberOfNetworks: string[]; // Initialize as empty array
-          myNetworkMembers: string[]; // Initialize as empty array
+          memberOfNetworks: string[];
+          myNetworkMembers: string[];
         } = {
           uid: user.uid,
           displayName: user.displayName,
           email: user.email,
           photoURL: user.photoURL,
-          createdAt: serverTimestamp(), // Firestore server-side timestamp
+          createdAt: serverTimestamp(),
           friends: [],
-          memberOfNetworks: [], 
+          memberOfNetworks: [],
           myNetworkMembers: [],
         };
         await setDoc(userProfileRef, newUserProfileData);
@@ -86,28 +90,28 @@ export default function AuthForm() {
       if (error.code === 'auth/popup-closed-by-user') {
         toast({
           title: "Sign-in Popup Closed",
-          description: "The Google Sign-In window was closed. If you didn't close it, please check your browser's popup blocker and third-party cookie settings. Then, try again.",
+          description: "The Google Sign-In window was closed before completion. This can be due to browser popup blockers, restrictive privacy settings (like blocking third-party cookies for Google), or closing the window manually. Please check these settings and try again.",
           variant: "default",
-          duration: 7000,
+          duration: 12000, 
         });
       } else if (error.code === 'auth/cancelled-popup-request') {
         toast({
           title: "Sign-in Interrupted",
-          description: "It seems multiple sign-in windows were opened or the process was interrupted. Please try again.",
+          description: "It seems multiple sign-in windows were opened or the process was interrupted. Please ensure only one sign-in attempt is active and try again.",
           variant: "default",
           duration: 7000,
         });
       } else if (error.code === 'auth/popup-blocked') {
         toast({
           title: "Popup Blocked by Browser",
-          description: "Your browser blocked the Google Sign-In popup. Please allow popups for this site and try again. Also, check if third-party cookies are enabled.",
+          description: "Your browser blocked the Google Sign-In popup. Please allow popups for this site and ensure third-party cookies are enabled for Google services. Then, try again.",
           variant: "destructive",
-          duration: 10000,
+          duration: 12000,
         });
       } else if (error.code === 'auth/unauthorized-domain') {
         toast({
           title: "Domain Not Authorized",
-          description: "This application's domain is not authorized for Google Sign-In. Please contact support or ensure the domain is added to Firebase authorized domains.",
+          description: "This application's domain is not authorized for Google Sign-In. Please ensure the domain is added to your Firebase project's 'Authorized domains' (Authentication -> Settings) AND in the Google Cloud Console OAuth consent screen.",
           variant: "destructive",
           duration: 10000,
         });
@@ -115,7 +119,7 @@ export default function AuthForm() {
        else {
         toast({
           title: "Error during Google Sign-In",
-          description: `${error.message || "An unexpected error occurred."} Please check your internet connection, browser settings (e.g., popup blockers, third-party cookies), and try again.`,
+          description: `${error.message || "An unexpected error occurred."} Please check your internet connection and browser settings (e.g., popup blockers, third-party cookies), then try again.`,
           variant: "destructive",
           duration: 10000,
         });
@@ -160,5 +164,3 @@ export default function AuthForm() {
     </Card>
   );
 }
-
-    
