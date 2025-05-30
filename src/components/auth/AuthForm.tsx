@@ -44,20 +44,24 @@ export default function AuthForm() {
       const userCredential = await signInWithPopup(auth, provider);
       const user = userCredential.user;
 
-      // Check if user profile already exists, create if not
       const userProfileRef = doc(db, "userProfiles", user.uid);
       const userProfileSnap = await getDoc(userProfileRef);
 
       if (!userProfileSnap.exists()) {
-        const userProfileData: Omit<AppUserProfile, 'createdAt'> & { createdAt: any } = {
+        const userProfileData: Omit<AppUserProfile, "createdAt" | "memberOfNetworks" | "myNetworkMembers"> & {
+          createdAt: any; // For serverTimestamp
+          friends: string[];
+          memberOfNetworks: string[];
+          myNetworkMembers: string[];
+        } = {
           uid: user.uid,
           displayName: user.displayName,
           email: user.email,
           photoURL: user.photoURL,
-          friends: [],
-          memberOfNetworks: [], // Initialize if still part of your model, else remove
-          myNetworkMembers: [], // Initialize if still part of your model, else remove
           createdAt: serverTimestamp(),
+          friends: [],
+          memberOfNetworks: [],
+          myNetworkMembers: [],
         };
         await setDoc(userProfileRef, userProfileData);
         console.log("New user profile created in Firestore for UID:", user.uid);
@@ -66,8 +70,6 @@ export default function AuthForm() {
           description: "Welcome to PersonaNet!",
         });
       } else {
-        // Optionally, update existing profile with latest Google data (displayName, photoURL)
-        // For now, just confirm login.
         console.log("Existing user signed in:", user.uid);
         toast({
           title: "Logged in successfully!",
@@ -78,18 +80,30 @@ export default function AuthForm() {
       router.push("/feed");
 
     } catch (error: any) {
-      console.error("Google Sign-In error:", error);
-      // Handle specific errors like 'auth/popup-closed-by-user'
+      console.error("Google Sign-In error:", error, "Code:", error.code);
+      
       if (error.code === 'auth/popup-closed-by-user') {
         toast({
-          title: "Sign-in Cancelled",
-          description: "You closed the Google Sign-In window.",
+          title: "Sign-in Window Closed",
+          description: "The Google Sign-In window was closed before completion. Please try again.",
           variant: "default",
+        });
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        toast({
+          title: "Sign-in Process Interrupted",
+          description: "Multiple sign-in windows may have been opened. Please try again.",
+          variant: "default",
+        });
+      } else if (error.code === 'auth/popup-blocked') {
+        toast({
+          title: "Popup Blocked by Browser",
+          description: "Your browser blocked the Google Sign-In popup. Please allow popups for this site and try again.",
+          variant: "destructive",
         });
       } else {
         toast({
           title: "Error during Google Sign-In",
-          description: error.message || "An unexpected error occurred.",
+          description: error.message || "An unexpected error occurred. Please check your internet connection and browser settings (e.g., popup blockers).",
           variant: "destructive",
         });
       }
@@ -133,3 +147,5 @@ export default function AuthForm() {
     </Card>
   );
 }
+
+    
